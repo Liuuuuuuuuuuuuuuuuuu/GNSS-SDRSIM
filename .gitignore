@@ -1,0 +1,28 @@
+# Object files
+*.o
+*.o:Zone.Identifier
+
+# RINEX files
+*.rnx
+*.rnx:Zone.Identifier
+
+# Zone Identifier files (Windows)
+*:Zone.Identifier
+
+# Build artifacts
+*.a
+*.so
+*.dylib
+*.exe
+*.out
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
