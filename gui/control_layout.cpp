@@ -1,26 +1,27 @@
 #include "gui/control_layout.h"
-
 #include <algorithm>
 #include <cmath>
 #include <cstring>
 
-static inline double clamp_double(double v, double lo, double hi)
-{
+static inline double clamp_double(double v, double lo, double hi) {
     if (v < lo) return lo;
     if (v > hi) return hi;
     return v;
 }
 
-bool rect_hit(const Rect &r, int x, int y)
-{
+static inline int clamp_int(int v, int lo, int hi) {
+    if (v < lo) return lo;
+    if (v > hi) return hi;
+    return v;
+}
+
+bool rect_hit(const Rect &r, int x, int y) {
     return x >= r.x && x < (r.x + r.w) && y >= r.y && y < (r.y + r.h);
 }
 
-int segmented_index_hit(const Rect &r, int x, int y, int segments)
-{
+int segmented_index_hit(const Rect &r, int x, int y, int segments) {
     if (segments <= 0) return -1;
     if (!rect_hit(r, x, y)) return -1;
-
     int seg_w = r.w / segments;
     if (seg_w <= 0) return -1;
     int idx = (x - r.x) / seg_w;
@@ -29,129 +30,178 @@ int segmented_index_hit(const Rect &r, int x, int y, int segments)
     return idx;
 }
 
-double slider_ratio_hit(const Rect &r, int x)
-{
+double slider_ratio_hit(const Rect &r, int x) {
     if (r.w <= 1) return 0.0;
     double t = (double)(x - r.x) / (double)(r.w - 1);
     return clamp_double(t, 0.0, 1.0);
 }
 
-Rect slider_value_rect(const Rect &r)
-{
-    int w = 78;
-    if (w > r.w - 24) w = std::max(44, r.w / 2);
-    return {r.x + r.w - w, r.y - 13, w, 12};
+// 根據模式動態調整數值框的大小與推升高度
+Rect slider_value_rect(const Rect &r) {
+    if (r.h <= 24) { // Detail 模式
+        int w = clamp_int((int)std::lround((double)r.w * 0.28), 72, 126);
+        return {r.x + r.w - w, r.y - 18, w, 20}; // 微調高度，確保數值框清晰獨立
+    } else { // Simple 模式
+        int w = clamp_int((int)std::lround((double)r.w * 0.24), 88, 150);
+        if (w > r.w - 10) w = std::max(60, r.w / 2);
+        return {r.x + r.w - w, r.y - 30, w, 24}; 
+    }
 }
 
-void compute_control_layout(int win_width, int win_height, ControlLayout *lo)
-{
+void compute_control_layout(int win_width, int win_height, ControlLayout *lo, bool detailed) {
     std::memset(lo, 0, sizeof(*lo));
 
-    int half_w = win_width / 2;
-    lo->panel.x = 0;
-    lo->panel.y = (win_height * 3) / 4;
-    lo->panel.w = half_w;
+    lo->panel.x = win_width / 2;
+    lo->panel.y = win_height / 2;
+    lo->panel.w = win_width - lo->panel.x;
     lo->panel.h = win_height - lo->panel.y;
 
-    int pad = 12;
-    int row_h = 16;
-    int row_gap = 16;
-    int col_gap = 8;
-    int col_w = (lo->panel.w - 2 * pad - 2 * col_gap) / 3;
-    if (col_w < 120) col_w = 120;
+    int pad_x = clamp_int(lo->panel.w / 26, 8, 26);
+    int pad_y = clamp_int(lo->panel.h / 28, 6, 16);
+    int gap = clamp_int(lo->panel.h / 68, 2, 8);
 
-    int base_y = lo->panel.y + 46;
-    int x_l = lo->panel.x + pad;
-    int x_m = x_l + col_w + col_gap;
-    int x_r = x_m + col_w + col_gap;
+    int header_h = clamp_int((int)std::lround((double)lo->panel.h * 0.22), 66, 132);
+    int header_x = lo->panel.x + pad_x;
+    int header_w = lo->panel.w - 2 * pad_x;
+    int header_y = lo->panel.y + pad_y;
 
-    auto set_slider = [&](Rect *slider_r, int x, int y) {
-        slider_r->x = x;
-        slider_r->y = y;
-        slider_r->w = col_w;
-        slider_r->h = row_h;
-    };
+    // Header 第1行：Control Panel（左）+ UTC（右）同行，無間隙，節省空間
+    int header_title_utc_h = clamp_int((int)std::lround((double)header_h * 0.40), 20, 40);
+    int bdt_gpst_gap = std::max(1, gap / 4);
+    int header_row_h = clamp_int((header_h - header_title_utc_h - gap - bdt_gpst_gap) / 2, 10, 22);
+    int hy = header_y;
+    int title_w = clamp_int(header_w / 6, 65, 130);
+    lo->header_title = {header_x, hy, title_w, header_title_utc_h};
+    lo->header_utc = {header_x + title_w, hy,
+                      header_w - title_w, header_title_utc_h};
+    hy += header_title_utc_h + gap;
+    lo->header_bdt = {header_x, hy, header_w, header_row_h};
+    hy += header_row_h + bdt_gpst_gap;
+    lo->header_gpst = {header_x, hy, header_w, header_row_h};
+    lo->detail_sats = {0, 0, 0, 0};
 
-    set_slider(&lo->tx_slider, x_l, base_y + 0 * (row_h + row_gap));
-    set_slider(&lo->gain_slider, x_m, base_y + 0 * (row_h + row_gap));
-    set_slider(&lo->fs_slider, x_r, base_y + 0 * (row_h + row_gap));
+    int tab_y = lo->header_gpst.y + lo->header_gpst.h + gap;
+    int tab_total_w = lo->panel.w - 2 * pad_x;
+    int tab_h = clamp_int(lo->panel.h / 18, 18, 28);
+    lo->btn_tab_simple = {lo->panel.x + pad_x, tab_y, tab_total_w / 2, tab_h};
+    lo->btn_tab_detail = {lo->btn_tab_simple.x + lo->btn_tab_simple.w, tab_y, tab_total_w - lo->btn_tab_simple.w, tab_h};
 
-    set_slider(&lo->cn0_slider, x_l, base_y + 1 * (row_h + row_gap));
-    set_slider(&lo->seed_slider, x_m, base_y + 1 * (row_h + row_gap));
-    set_slider(&lo->prn_slider, x_r, base_y + 1 * (row_h + row_gap));
-    set_slider(&lo->path_v_slider, x_l, base_y + 2 * (row_h + row_gap));
-    set_slider(&lo->path_a_slider, x_m, base_y + 2 * (row_h + row_gap));
-    set_slider(&lo->ch_slider, x_r, base_y + 2 * (row_h + row_gap));
+    // 2. 底部 Action Button：START 在左，EXIT 在右並列（RETURN 在搜尋框旁）
+    int action_h = clamp_int(lo->panel.h / 16, 26, 38);
+    int action_y = lo->panel.y + lo->panel.h - pad_y - action_h;
+    int exit_w = clamp_int(lo->panel.w / 6, 60, 120);
+    int action_gap = clamp_int(lo->panel.w / 60, 4, 12);
+    lo->btn_return = {0, 0, 0, 0};
+    lo->btn_start = {lo->panel.x + pad_x, action_y,
+                     lo->panel.w - 2 * pad_x - exit_w - action_gap, action_h};
+    lo->btn_exit = {lo->btn_start.x + lo->btn_start.w + action_gap, action_y, exit_w, action_h};
+    lo->btn_stop = {0, 0, 0, 0}; 
 
-    int gap_params_to_mode = 0;
-    int gap_mode_to_toggle = 14;
-    int gap_toggle_to_action = 10;
+    // 3. 內容區域可用高度
+    if (detailed) {
+        lo->detail_sats = {header_x, tab_y + tab_h + gap, header_w, clamp_int(lo->panel.h / 36, 8, 14)};
+    }
+    int content_y = tab_y + tab_h + gap + (detailed ? (lo->detail_sats.h + gap) : 0);
+    int content_h = std::max(24, action_y - content_y - gap);
+    
+    // content_frame: 從頁籤頂部到最後一個操控元件底部的邊界
+    lo->content_frame = {lo->panel.x + pad_x, tab_y, lo->panel.w - 2 * pad_x, 
+                         std::max(0, action_y - tab_y - gap)};
 
-    int mode_y = base_y + 3 * (row_h + row_gap) + gap_params_to_mode;
-    int sw_gap = 8;
-    int sw_w = (lo->panel.w - 2 * pad - sw_gap) / 2;
-    if (sw_w < 120) sw_w = 120;
-    lo->sw_mode = {x_l, mode_y, sw_w, row_h};
-    lo->sw_sys = {x_l + sw_w + sw_gap, mode_y, sw_w, row_h};
+    int x_l = lo->panel.x + pad_x;
+    int full_w = lo->panel.w - 2 * pad_x;
 
-    int tg_y = mode_y + row_h + gap_mode_to_toggle;
-    int tg_w = (lo->panel.w - 2 * pad - 4 * 6) / 5;
-    if (tg_w < 60) tg_w = 60;
-    lo->tg_meo = {x_l, tg_y, tg_w, row_h};
-    lo->tg_iono = {x_l + 1 * (tg_w + 6), tg_y, tg_w, row_h};
-    lo->tg_clk = {x_l + 2 * (tg_w + 6), tg_y, tg_w, row_h};
-    lo->sw_fmt = {x_l + 3 * (tg_w + 6), tg_y, tg_w, row_h};
-    lo->sw_jam = {x_l + 4 * (tg_w + 6), tg_y, tg_w, row_h};
+    if (detailed) {
+        // Detail 模式：以 Simple 為主，去除重複的 SYSTEM/FS，只顯示額外組件（6 槽）
+        int col_gap = clamp_int(full_w / 20, 10, 28);
+        int col_w = (full_w - col_gap) / 2;
+        int x_r = x_l + col_w + col_gap;
 
-    int action_y = tg_y + row_h + gap_toggle_to_action;
-    int action_w = (lo->panel.w - 2 * pad - 8) / 2;
-    if (action_w < 120) action_w = 120;
-    lo->btn_start = {x_l, action_y, action_w, 20};
-    lo->btn_stop = {x_l + action_w + 8, action_y, action_w, 20};
+        int slot_h = std::max(1, content_h / 6);
+        int row_h = clamp_int((int)std::lround((double)slot_h * 0.60), 8, 24);
+        int sw_h = clamp_int((int)std::lround((double)slot_h * 0.70), 10, 28);
+        row_h = std::min(row_h, std::max(6, slot_h - 4));
+        sw_h = std::min(sw_h, std::max(8, slot_h - 2));
 
-    int exit_size = 14;
-    int exit_margin_right = 10;
-    int exit_margin_bottom = 4;
-    lo->btn_exit = {
-        lo->panel.x + lo->panel.w - exit_margin_right - exit_size,
-        lo->panel.y + lo->panel.h - exit_margin_bottom - exit_size,
-        exit_size,
-        exit_size
-    };
+        auto slot_y = [&](int idx, int h) {
+            int top = content_y + idx * slot_h;
+            return top + std::max(0, (slot_h - h) / 2);
+        };
+
+        lo->sw_sys = {0, 0, 0, 0};
+        lo->fs_slider = {0, 0, 0, 0};
+
+        auto set_slider_2col = [&](Rect *r_left, Rect *r_right, int slot_idx) {
+            int sy = slot_y(slot_idx, row_h);
+            if (r_left)  *r_left  = {x_l, sy, col_w, row_h};
+            if (r_right) *r_right = {x_r, sy, col_w, row_h};
+        };
+
+        set_slider_2col(&lo->gain_slider, nullptr, 0);
+        set_slider_2col(&lo->cn0_slider, &lo->seed_slider, 1);
+        set_slider_2col(&lo->path_v_slider, &lo->path_a_slider, 2);
+        set_slider_2col(&lo->prn_slider, &lo->ch_slider, 3);
+        lo->tx_slider = {0, 0, 0, 0};
+
+        int sw_y4 = slot_y(4, sw_h);
+        lo->sw_fmt = {x_l, sw_y4, col_w, sw_h};
+        lo->sw_jam = {0, 0, 0, 0};
+
+        int sw_y5 = slot_y(5, sw_h);
+        lo->sw_mode = {x_l, sw_y5, col_w, sw_h};
+        int cb_gap = clamp_int(col_w / 18, 6, 12);
+        int cb_w = (col_w - 2 * cb_gap) / 3;
+        lo->tg_meo  = {x_r, sw_y5, cb_w, sw_h};
+        lo->tg_iono = {x_r + cb_w + cb_gap, sw_y5, cb_w, sw_h};
+        lo->tg_clk  = {x_r + 2 * (cb_w + cb_gap), sw_y5, cb_w, sw_h};
+
+    } else {
+        // Simple 模式使用 4 槽：SYSTEM + FS + TX + INTERFERE(SPOOF/JAM)。
+        int slot_h = std::max(1, content_h / 4);
+        int sw_h = clamp_int((int)std::lround((double)slot_h * 0.84), 10, 36);
+        int row_h = clamp_int((int)std::lround((double)slot_h * 0.72), 8, 30);
+        sw_h = std::min(sw_h, std::max(8, slot_h - 2));
+        row_h = std::min(row_h, std::max(6, slot_h - 2));
+
+        auto slot_y = [&](int idx, int h) {
+            int top = content_y + idx * slot_h;
+            return top + std::max(0, (slot_h - h) / 2);
+        };
+
+        lo->sw_sys = {x_l, slot_y(0, sw_h), full_w, sw_h};
+        lo->fs_slider = {x_l, slot_y(1, row_h), full_w, row_h};
+        lo->gain_slider = {0, 0, 0, 0};
+        lo->tx_slider = {x_l, slot_y(2, row_h), full_w, row_h};
+        lo->sw_jam = {x_l, slot_y(3, sw_h), full_w, sw_h};
+    }
 }
 
-int control_slider_hit_test(int x, int y, int win_width, int win_height)
-{
-    ControlLayout lo;
-    compute_control_layout(win_width, win_height, &lo);
-
+int control_slider_hit_test(int x, int y, int win_width, int win_height, bool detailed) {
+    ControlLayout lo; compute_control_layout(win_width, win_height, &lo, detailed);
     if (!rect_hit(lo.panel, x, y)) return -1;
     if (rect_hit(lo.tx_slider, x, y) && !rect_hit(slider_value_rect(lo.tx_slider), x, y)) return CTRL_SLIDER_TX;
     if (rect_hit(lo.gain_slider, x, y) && !rect_hit(slider_value_rect(lo.gain_slider), x, y)) return CTRL_SLIDER_GAIN;
     if (rect_hit(lo.fs_slider, x, y) && !rect_hit(slider_value_rect(lo.fs_slider), x, y)) return CTRL_SLIDER_FS;
-    if (rect_hit(lo.cn0_slider, x, y) && !rect_hit(slider_value_rect(lo.cn0_slider), x, y)) return CTRL_SLIDER_CN0;
-    if (rect_hit(lo.seed_slider, x, y) && !rect_hit(slider_value_rect(lo.seed_slider), x, y)) return CTRL_SLIDER_SEED;
-    if (rect_hit(lo.prn_slider, x, y) && !rect_hit(slider_value_rect(lo.prn_slider), x, y)) return CTRL_SLIDER_PRN;
-    if (rect_hit(lo.path_v_slider, x, y) && !rect_hit(slider_value_rect(lo.path_v_slider), x, y)) return CTRL_SLIDER_PATH_V;
-    if (rect_hit(lo.path_a_slider, x, y) && !rect_hit(slider_value_rect(lo.path_a_slider), x, y)) return CTRL_SLIDER_PATH_A;
-    if (rect_hit(lo.ch_slider, x, y) && !rect_hit(slider_value_rect(lo.ch_slider), x, y)) return CTRL_SLIDER_CH;
+    if (detailed && rect_hit(lo.cn0_slider, x, y) && !rect_hit(slider_value_rect(lo.cn0_slider), x, y)) return CTRL_SLIDER_CN0;
+    if (detailed && rect_hit(lo.seed_slider, x, y) && !rect_hit(slider_value_rect(lo.seed_slider), x, y)) return CTRL_SLIDER_SEED;
+    if (detailed && rect_hit(lo.prn_slider, x, y) && !rect_hit(slider_value_rect(lo.prn_slider), x, y)) return CTRL_SLIDER_PRN;
+    if (detailed && rect_hit(lo.path_v_slider, x, y) && !rect_hit(slider_value_rect(lo.path_v_slider), x, y)) return CTRL_SLIDER_PATH_V;
+    if (detailed && rect_hit(lo.path_a_slider, x, y) && !rect_hit(slider_value_rect(lo.path_a_slider), x, y)) return CTRL_SLIDER_PATH_A;
+    if (detailed && rect_hit(lo.ch_slider, x, y) && !rect_hit(slider_value_rect(lo.ch_slider), x, y)) return CTRL_SLIDER_CH;
     return -1;
 }
 
-int control_value_hit_test(int x, int y, int win_width, int win_height)
-{
-    ControlLayout lo;
-    compute_control_layout(win_width, win_height, &lo);
-
+int control_value_hit_test(int x, int y, int win_width, int win_height, bool detailed) {
+    ControlLayout lo; compute_control_layout(win_width, win_height, &lo, detailed);
     if (!rect_hit(lo.panel, x, y)) return -1;
     if (rect_hit(slider_value_rect(lo.tx_slider), x, y)) return CTRL_SLIDER_TX;
     if (rect_hit(slider_value_rect(lo.gain_slider), x, y)) return CTRL_SLIDER_GAIN;
     if (rect_hit(slider_value_rect(lo.fs_slider), x, y)) return CTRL_SLIDER_FS;
-    if (rect_hit(slider_value_rect(lo.cn0_slider), x, y)) return CTRL_SLIDER_CN0;
-    if (rect_hit(slider_value_rect(lo.seed_slider), x, y)) return CTRL_SLIDER_SEED;
-    if (rect_hit(slider_value_rect(lo.prn_slider), x, y)) return CTRL_SLIDER_PRN;
-    if (rect_hit(slider_value_rect(lo.path_v_slider), x, y)) return CTRL_SLIDER_PATH_V;
-    if (rect_hit(slider_value_rect(lo.path_a_slider), x, y)) return CTRL_SLIDER_PATH_A;
-    if (rect_hit(slider_value_rect(lo.ch_slider), x, y)) return CTRL_SLIDER_CH;
+    if (detailed && rect_hit(slider_value_rect(lo.cn0_slider), x, y)) return CTRL_SLIDER_CN0;
+    if (detailed && rect_hit(slider_value_rect(lo.seed_slider), x, y)) return CTRL_SLIDER_SEED;
+    if (detailed && rect_hit(slider_value_rect(lo.prn_slider), x, y)) return CTRL_SLIDER_PRN;
+    if (detailed && rect_hit(slider_value_rect(lo.path_v_slider), x, y)) return CTRL_SLIDER_PATH_V;
+    if (detailed && rect_hit(slider_value_rect(lo.path_a_slider), x, y)) return CTRL_SLIDER_PATH_A;
+    if (detailed && rect_hit(slider_value_rect(lo.ch_slider), x, y)) return CTRL_SLIDER_CH;
     return -1;
 }

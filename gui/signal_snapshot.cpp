@@ -30,20 +30,55 @@ void build_time_info(TimeInfo *ti)
                   tm_utc.tm_year + 1900, tm_utc.tm_mon + 1, tm_utc.tm_mday,
                   tm_utc.tm_hour, tm_utc.tm_min, tm_utc.tm_sec);
 
-    const time_t bdt0 = 1136073600;
     const time_t week_sec = 604800;
-    time_t diff_int = now_t - bdt0 + utc_bdt_diff;
-    long week = (long)(diff_int / week_sec);
-    long rem = (long)(diff_int % week_sec);
-    if (rem < 0) {
-        rem += week_sec;
-        --week;
-    }
-    double sow = (double)rem + frac;
+    const time_t bdt0 = 1136073600;
+    const time_t gps0 = 315964800;
 
-    ti->week = (int)week;
-    ti->sow = sow;
-    std::snprintf(ti->bdt_label, sizeof(ti->bdt_label), "BDT Week %d  SOW %.2f", ti->week, ti->sow);
+    time_t bdt_diff_int = now_t - bdt0 + utc_bdt_diff;
+    long bdt_week_rt = (long)(bdt_diff_int / week_sec);
+    long bdt_rem = (long)(bdt_diff_int % week_sec);
+    if (bdt_rem < 0) {
+        bdt_rem += week_sec;
+        --bdt_week_rt;
+    }
+
+    time_t gps_diff_int = now_t - gps0 + utc_gpst_diff;
+    long gps_week_rt = (long)(gps_diff_int / week_sec);
+    long gps_rem = (long)(gps_diff_int % week_sec);
+    if (gps_rem < 0) {
+        gps_rem += week_sec;
+        --gps_week_rt;
+    }
+
+    int out_bdt_week = (int)bdt_week_rt;
+    int out_gpst_week = (int)gps_week_rt;
+    double out_bdt_sow = (double)bdt_rem + frac;
+    double out_gpst_sow = (double)gps_rem + frac;
+
+    // Keep week values aligned to loaded ephemeris per-system.
+    int latest_bds_week = 0;
+    for (int prn = 1; prn <= BDS_PRN_MAX; ++prn) {
+        if (eph[prn].prn == 0) continue;
+        if (eph[prn].week > latest_bds_week) latest_bds_week = eph[prn].week;
+    }
+    if (latest_bds_week > 0) {
+        out_bdt_week = latest_bds_week;
+    }
+
+    int latest_gps_week = 0;
+    for (int prn = 1; prn <= GPS_PRN_MAX; ++prn) {
+        if (gps_eph[prn].prn == 0) continue;
+        if (gps_eph[prn].week > latest_gps_week) latest_gps_week = gps_eph[prn].week;
+    }
+    if (latest_gps_week > 0) {
+        out_gpst_week = latest_gps_week;
+    }
+
+    ti->bdt_week = out_bdt_week;
+    ti->bdt_sow = out_bdt_sow;
+    ti->gpst_week = out_gpst_week;
+    ti->gpst_sow = out_gpst_sow;
+    std::snprintf(ti->bdt_label, sizeof(ti->bdt_label), "BDT Week %d  SOW %.2f", ti->bdt_week, ti->bdt_sow);
 }
 
 static void bdt_to_gpst_week_sow(int bdt_week, double bdt_sow, int *gps_week, double *gps_sow)

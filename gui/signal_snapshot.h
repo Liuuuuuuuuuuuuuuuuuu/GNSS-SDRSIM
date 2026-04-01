@@ -16,8 +16,10 @@ struct SatPoint {
 };
 
 struct TimeInfo {
-    int week;
-    double sow;
+    int bdt_week;
+    double bdt_sow;
+    int gpst_week;
+    double gpst_sow;
     char utc_label[64];
     char bdt_label[64];
 };
