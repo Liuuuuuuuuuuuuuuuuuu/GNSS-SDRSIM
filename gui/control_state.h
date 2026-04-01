@@ -25,6 +25,7 @@ struct GuiControlState {
     bool interference_mode;
     bool running_ui;
     bool llh_ready;
+    bool show_detailed_ctrl; // <-- 新增此變數記錄頁籤狀態
     char rinex_name[256];
 };
 

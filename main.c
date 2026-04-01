@@ -528,7 +528,7 @@ static void set_cfg_defaults(sim_config_t *cfg)
     cfg->step_ms = 1;
     cfg->duration = 1;
     cfg->seed = 1;
-    cfg->byte_output = false;
+    cfg->byte_output = true;
     cfg->meo_only = false;
     cfg->single_prn = 0;
     cfg->prn37_only = false;
@@ -537,7 +537,7 @@ static void set_cfg_defaults(sim_config_t *cfg)
     cfg->interference_mode = false;
     cfg->fs = mode_min_fs_hz(cfg->signal_mode);
     cfg->iono_on = true;
-    cfg->tx_gain = 100.0;
+    cfg->tx_gain = 50.0;
     cfg->usrp_external_clk = true;
     cfg->print_ch_info = true;
     cfg->max_ch = 16;
@@ -1159,6 +1159,7 @@ int main(int argc, char *argv[])
                 continue;
             }
 
+            map_gui_set_tx_active(0);
             map_gui_set_run_state(1);
 
             map_gui_get_control_config(&cfg, &g_target_cn0);
@@ -1282,6 +1283,7 @@ int main(int argc, char *argv[])
               running = true;
                  g_runtime_running = 1;
                  clear_queued_paths();
+                        map_gui_set_tx_active(1);
             printf("[run] 開始連續發射固定點 %.6f, %.6f, %.2f\n",
                    hold_llh[0], hold_llh[1], hold_llh[2]);
                  map_gui_clear_path_segments();

@@ -15,6 +15,7 @@ void map_gui_get_control_config(sim_config_t *cfg, double *target_cn0);
 void map_gui_set_single_prn_candidates(const int *prns, int count);
 void map_gui_set_rinex_name(const char *rinex_path);
 void map_gui_set_run_state(int running);
+void map_gui_set_tx_active(int active);
 void map_gui_set_llh_ready(int ready);
 int map_gui_get_preview_prn(void);
 int map_gui_consume_selected_llh(double *lat_deg, double *lon_deg, double *h_m);
