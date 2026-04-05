@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+set -eu
+
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"
+
+pick_from_cc() {
+  cc="$1"
+  case "$cc" in
+    6.1*) echo "bds-sim-pascal" ;;
+    7.5*) echo "bds-sim-turing" ;;
+    8.6*|8.7*|8.8*) echo "bds-sim-ampere" ;;
+    8.9*) echo "bds-sim-ada" ;;
+    12.*|11.*|10.*) echo "bds-sim-blackwell" ;;
+    *) echo "bds-sim-modern" ;;
+  esac
+}
+
+gpu_cc=""
+if command -v nvidia-smi >/dev/null 2>&1; then
+  gpu_cc=$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n 1 | tr -d "[:space:]" || true)
+fi
+
+selected=""
+if [ -n "$gpu_cc" ]; then
+  selected=$(pick_from_cc "$gpu_cc")
+else
+  gpu_name=""
+  if command -v nvidia-smi >/dev/null 2>&1; then
+    gpu_name=$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n 1 || true)
+  fi
+  case "$gpu_name" in
+    *"GTX 10"*|*"P10"*) selected="bds-sim-pascal" ;;
+    *"RTX 20"*|*"TITAN RTX"*) selected="bds-sim-turing" ;;
+    *"RTX 30"*) selected="bds-sim-ampere" ;;
+    *"RTX 40"*) selected="bds-sim-ada" ;;
+    *"RTX 50"*) selected="bds-sim-blackwell" ;;
+    *) selected="bds-sim-modern" ;;
+  esac
+fi
+
+if [ "$selected" = "bds-sim-pascal" ] && [ ! -x "$ROOT_DIR/bin/$selected" ]; then
+  echo "[launcher] Pascal GPU detected, but $selected was not built." >&2
+  echo "[launcher] Rebuild with CUDA 12.x NVCC that supports sm_61:" >&2
+  echo "[launcher]   NVCC=/usr/local/cuda-12.4/bin/nvcc make clean && NVCC=/usr/local/cuda-12.4/bin/nvcc make" >&2
+  exit 2
+fi
+
+for bin in "$selected" bds-sim-modern bds-sim-ada bds-sim-ampere bds-sim-turing bds-sim-blackwell; do
+  if [ -x "$ROOT_DIR/bin/$bin" ]; then
+    echo "[launcher] Using $bin (compute_cap=${gpu_cc:-unknown})" >&2
+    exec "$ROOT_DIR/bin/$bin" "$@"
+  fi
+done
+
+echo "[launcher] No runnable bds-sim binary found. Please run: make" >&2
+exit 2

@@ -36,6 +36,7 @@ typedef struct {
     bool     signal_gps; /* true: GPS L1 C/A, false: BDS B1I */
     uint8_t  signal_mode; /* SIG_MODE_BDS / SIG_MODE_GPS / SIG_MODE_MIXED */
     bool     interference_mode; /* true: generate random-sequence BPSK interference */
+    int      interference_selection; /* -1: none, 0: spoof/general, 1: jam */
     bool     iono_on;
     double   tx_gain;      /* USRP 發射增益 (0-31.5 dB) */
     bool     usrp_external_clk; /* true: external ref clock, false: internal */
@@ -47,6 +48,7 @@ bool init_simulator(sim_config_t *, double start_bdt);
 bool reload_simulator_nav(sim_config_t *, double start_bdt);
 void generate_signal(const sim_config_t *cfg);
 void reset_signal_engine_state(void);
+int  cuda_runtime_smoke_test(void);
 void cleanup_simulator(void);
 int  select_channels(channel_t *ch, int *n_ch, const coord_t *usr,
                      int single_prn, bool meo_only, bool prn37_only,

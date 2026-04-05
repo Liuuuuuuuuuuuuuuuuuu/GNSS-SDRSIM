@@ -153,11 +153,17 @@ int usrp_init(double freq, double rate, double gain, int use_external_clk, int s
         usrp_dev = uhd::usrp::multi_usrp::make("num_send_frames=1024,send_frame_size=8192");
         usrp_dev->set_clock_source(use_external_clk ? "external" : "internal");
         usrp_dev->set_tx_rate(rate);
+        double actual_rate = usrp_dev->get_tx_rate();
         usrp_dev->set_tx_freq(freq);
         usrp_dev->set_tx_gain(gain);
         usrp_dev->set_tx_antenna("TX/RX");
 
         std::cout << "[USRP] Clock source: " << (use_external_clk ? "external" : "internal") << std::endl;
+        std::cout << "[USRP] TX rate requested: " << (rate / 1e6) << " MHz, actual: "
+                  << (actual_rate / 1e6) << " MHz" << std::endl;
+        if (std::abs(actual_rate - (rate * 2.0)) < 1.0) {
+            std::cerr << "[USRP][warn] Actual TX rate is near 2x requested rate." << std::endl;
+        }
 
         bool use_sc8 = (sample_format == USRP_SAMPLE_FMT_BYTE);
         uhd::stream_args_t stream_args(use_sc8 ? "sc8" : "sc16", use_sc8 ? "sc8" : "sc12");

@@ -1,6 +1,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <strings.h>
 #include <stdbool.h>
 #include <math.h>
 #include <glob.h>
@@ -9,10 +10,16 @@
 #include <unistd.h>
 #include <time.h>
 #include <errno.h>
+#include <arpa/inet.h>
+#include <netdb.h>
+#include <fcntl.h>
 #include <sys/select.h>
+#include <sys/socket.h>
+#include <sys/wait.h>
 #include <dirent.h>
 #include <sys/stat.h>
 #include <pthread.h>
+#include <stdarg.h>
 
 #include "bdssim.h"
 #include "timeconv.h"
@@ -21,7 +28,8 @@
 #include "channel.h"
 #include "coord.h"
 #include "usrp_wrapper.h"
-#include "map_gui.h"
+#include "main_gui.h"
+#include "cuda/cuda_runtime_info.h"
 
 typedef struct {
     bool start;
@@ -62,6 +70,7 @@ static volatile int g_runtime_path_queue_count = 0;
 static queued_path_t g_path_queue[MAX_PATH_QUEUE] = {0};
 static int g_path_q_count = 0;
 static pthread_mutex_t g_path_q_mtx = PTHREAD_MUTEX_INITIALIZER;
+static int g_spoof_autocenter_done = 0;
 
 static void print_pending_path_queue_locked(void)
 {
@@ -287,6 +296,7 @@ static void *stdin_reader_thread(void *arg)
 static void usage(const char *p)
 {
     printf("用法: %s\n", p);
+    puts("  --screen N          指定 GUI 顯示在由左到右排序的第 N 個螢幕 (例如 --screen 3)");
     puts("互動命令:");
     puts("  左上地圖左鍵點選      設定起始固定座標 (lat,lon,h=0m)");
     puts("  --llh lat,lon,h      (相容保留) 手動設定起始固定座標");
@@ -306,6 +316,17 @@ static void usage(const char *p)
     puts("  5) 每段確認後可用該段終點接續下一段，最多同時保留 5 段；走完會自動清除該段軌跡");
     puts("  6) START 後右上角可用返回鍵撤回最後一段（若該段已在執行中則不可撤回）");
     puts("  7) 每段皆採 0->勻速->0 的速度剖面，按 STOP 會中斷並清空路徑/座標（需重新點選起點）\n");
+}
+
+static void gui_report_alert(int level, const char *fmt, ...)
+{
+    char buf[1024];
+    va_list ap;
+    va_start(ap, fmt);
+    vsnprintf(buf, sizeof(buf), fmt, ap);
+    va_end(ap);
+
+    map_gui_push_alert(level, buf);
 }
 
 static const char *kBncRinexDir = "./BRDM";
@@ -508,6 +529,55 @@ static void apply_mode_if_offsets(uint8_t signal_mode)
     }
 }
 
+static int check_internet_connectivity(void)
+{
+    struct sockaddr_in addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sin_family = AF_INET;
+    addr.sin_port = htons(443);
+    if (inet_pton(AF_INET, "1.1.1.1", &addr.sin_addr) != 1) {
+        return 0;
+    }
+
+    int fd = socket(AF_INET, SOCK_STREAM, 0);
+    if (fd < 0) {
+        return 0;
+    }
+
+    int flags = fcntl(fd, F_GETFL, 0);
+    if (flags >= 0) {
+        fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+    }
+
+    int rc = connect(fd, (struct sockaddr *)&addr, sizeof(addr));
+    if (rc == 0) {
+        close(fd);
+        return 1;
+    }
+    if (errno != EINPROGRESS) {
+        close(fd);
+        return 0;
+    }
+
+    fd_set wfds;
+    FD_ZERO(&wfds);
+    FD_SET(fd, &wfds);
+    struct timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    rc = select(fd + 1, NULL, &wfds, NULL, &tv);
+    if (rc > 0 && FD_ISSET(fd, &wfds)) {
+        int err = 0;
+        socklen_t len = sizeof(err);
+        getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &len);
+        close(fd);
+        return err == 0;
+    }
+
+    close(fd);
+    return 0;
+}
+
 /* Keep legacy bool flag and new enum in sync before Fs/frequency decisions. */
 static uint8_t normalize_signal_mode(uint8_t signal_mode, bool signal_gps)
 {
@@ -535,6 +605,7 @@ static void set_cfg_defaults(sim_config_t *cfg)
     cfg->signal_gps = false;
     cfg->signal_mode = SIG_MODE_BDS;
     cfg->interference_mode = false;
+    cfg->interference_selection = -1;
     cfg->fs = mode_min_fs_hz(cfg->signal_mode);
     cfg->iono_on = true;
     cfg->tx_gain = 50.0;
@@ -970,12 +1041,36 @@ static void stop_and_reset_runtime_state(sim_config_t *cfg,
 
 int main(int argc, char *argv[])
 {
-    (void)argc;
-    (void)argv;
+    // Avoid known WSL/PTX JIT crash path on some driver + GPU combinations.
+    cuda_runtime_apply_safe_env();
+    fprintf(stderr, "[cuda] JIT disabled (CUDA_DISABLE_JIT=1, CUDA_DISABLE_PTX_JIT=1).\n");
+    const int cuda_runtime_enabled = cuda_runtime_is_enabled_by_env();
+    int cuda_runtime_smoke_ok = 1;
+    if (cuda_runtime_enabled && cuda_runtime_should_run_smoke()) {
+        cuda_runtime_smoke_ok = cuda_runtime_probe_safely(cuda_runtime_smoke_test);
+        if (!cuda_runtime_smoke_ok) {
+            fprintf(stderr,
+                    "[error] CUDA runtime probe failed (segfault or init error in child process).\n"
+                    "[error] 建議使用與 Driver CUDA 版本相符的 Toolkit（你目前 Driver 顯示 CUDA 13.1，建議安裝/切換到 CUDA 13.1 nvcc）。\n");
+        }
+    }
+
+    int gui_screen_index = 0;
+    for (int i = 1; i < argc; ++i) {
+        if (strcmp(argv[i], "--screen") == 0 && i + 1 < argc) {
+            gui_screen_index = atoi(argv[++i]);
+            continue;
+        }
+        if (strncmp(argv[i], "--screen=", 9) == 0) {
+            gui_screen_index = atoi(argv[i] + 9);
+            continue;
+        }
+    }
 
     sim_config_t cfg;
     set_cfg_defaults(&cfg);
     map_gui_set_control_defaults(&cfg);
+    map_gui_set_screen_index(gui_screen_index);
 
     bool llh_set = false;
     bool running = false;
@@ -996,14 +1091,34 @@ int main(int argc, char *argv[])
 
     find_latest_rinex(cfg.rinex_file, sizeof(cfg.rinex_file));
     map_gui_set_rinex_name(cfg.rinex_file);
-    if (cfg.rinex_file[0] == '\0') {
+        int internet_ok = check_internet_connectivity();
+        int catalog_ok = (cfg.rinex_file[0] != '\0' && rinex_is_within_2h(cfg.rinex_file));
+        int spoof_allowed_now = (internet_ok && catalog_ok);
+        map_gui_set_mode_policy(spoof_allowed_now ? 1 : 0);
+        if (!catalog_ok && internet_ok) {
+        fprintf(stderr,
+            "[warn] 有網路但沒有可用星曆，僅可使用 JAM 模式\n");
+        gui_report_alert(1,
+                 "Network is available but no valid RINEX file is loaded. Only JAM mode is available.");
+        } else if (!catalog_ok && !internet_ok) {
+        fprintf(stderr,
+            "[warn] 無網路且沒有可用星曆，僅可使用 JAM 模式\n");
+        gui_report_alert(1,
+                 "No internet and no valid RINEX file. Only JAM mode is available.");
+        }
+
+        if (cfg.rinex_file[0] == '\0') {
         fprintf(stderr,
                 "[warn] 找不到可用星曆檔 (%s/BRDC00WRD_S_YYYYDDDHH00_01H_MN*)，僅可使用 JAM 模式\n",
                 kBncRinexDir);
+        gui_report_alert(1,
+                         "No valid RINEX file found. Only JAM mode is available.");
     } else if (!rinex_is_within_2h(cfg.rinex_file)) {
         fprintf(stderr,
                 "[warn] 最新星曆檔超過 2 小時，僅可使用 JAM 模式或更新 %s 後再啟動一般模式\n",
                 kBncRinexDir);
+        gui_report_alert(1,
+                         "Latest RINEX is older than 2 hours. Update BRDM before using general mode.");
     }
 
     usage("./bds-sim");
@@ -1027,6 +1142,7 @@ int main(int argc, char *argv[])
                 simulator_ready = true;
             } else {
                 fprintf(stderr, "[warn] GUI 待命初始化失敗，將在 --start 時重試\n");
+                gui_report_alert(1, "GUI standby initialization failed. It will retry on START.");
             }
         }
 
@@ -1042,6 +1158,7 @@ int main(int argc, char *argv[])
     pthread_t input_tid;
     if (pthread_create(&input_tid, NULL, stdin_reader_thread, NULL) != 0) {
         fprintf(stderr, "[error] 無法建立輸入執行緒\n");
+        gui_report_alert(2, "Failed to create input thread.");
         return 1;
     }
 
@@ -1113,8 +1230,29 @@ int main(int argc, char *argv[])
             preview_cfg.signal_gps = (preview_cfg.signal_mode == SIG_MODE_GPS);
             preview_cfg.fs = clamp_fs_to_mode_grid(preview_cfg.fs, preview_cfg.signal_mode);
 
-            const bool llh_required = !preview_cfg.interference_mode;
-            map_gui_set_llh_ready((llh_set || !llh_required) ? 1 : 0);
+            find_latest_rinex(cfg.rinex_file, sizeof(cfg.rinex_file));
+            map_gui_set_rinex_name(cfg.rinex_file);
+
+            const bool spoof_selected = (preview_cfg.interference_selection == 0);
+            const bool jam_selected = (preview_cfg.interference_selection == 1);
+            const bool llh_required = spoof_selected;
+
+            if (spoof_selected && !llh_set && !g_spoof_autocenter_done) {
+                double auto_lat = 0.0, auto_lon = 0.0, auto_h = 0.0;
+                if (map_gui_get_default_spoof_llh(&auto_lat, &auto_lon, &auto_h)) {
+                    cfg.llh[0] = auto_lat;
+                    cfg.llh[1] = auto_lon;
+                    cfg.llh[2] = auto_h;
+                    llh_set = true;
+                    map_gui_set_selected_llh(auto_lat, auto_lon, auto_h);
+                    fprintf(stderr,
+                            "[cfg] SPOOF 預設定位至最近禁航區中心: %.6f,%.6f,%.2f\n",
+                            auto_lat, auto_lon, auto_h);
+                    g_spoof_autocenter_done = 1;
+                }
+            }
+
+            map_gui_set_llh_ready((llh_set || !llh_required || jam_selected) ? 1 : 0);
             if (llh_set) {
                 g_receiver_lat_deg = cfg.llh[0];
                 g_receiver_lon_deg = cfg.llh[1];
@@ -1127,7 +1265,8 @@ int main(int argc, char *argv[])
                 map_gui_set_single_prn_candidates(NULL, 0);
                 refresh_preview_prn_mask(NULL, false, cfg.llh, 0.0);
                 if (cmd.start) {
-                    fprintf(stderr, "[error] 請先在左上地圖點選起點\n");
+                    fprintf(stderr, "[error] SPOOF 模式需要定位，且無法自動取得預設 NFZ 中心\n");
+                    gui_report_alert(2, "SPOOF mode requires a location, and no NFZ center could be determined.");
                     map_gui_set_run_state(0);
                 }
                 usleep(20000);
@@ -1159,8 +1298,14 @@ int main(int argc, char *argv[])
                 continue;
             }
 
+            if (preview_cfg.interference_selection < 0) {
+                fprintf(stderr, "[error] 請先選擇 INTERFERE 的模式 (SPOOF 或 JAM)\n");
+                gui_report_alert(2, "Please choose INTERFERE mode first: SPOOF or JAM.");
+                map_gui_set_run_state(0);
+                continue;
+            }
+
             map_gui_set_tx_active(0);
-            map_gui_set_run_state(1);
 
             map_gui_get_control_config(&cfg, &g_target_cn0);
             cfg.signal_mode = normalize_signal_mode(cfg.signal_mode, cfg.signal_gps);
@@ -1175,6 +1320,8 @@ int main(int argc, char *argv[])
                     fprintf(stderr,
                             "[error] 一般模式需要星曆：找不到可用星曆檔 (%s/BRDC00WRD_S_YYYYDDDHH00_01H_MN*)\n",
                             kBncRinexDir);
+                    gui_report_alert(2,
+                                     "General mode requires a valid RINEX file, but none was found.");
                     map_gui_set_run_state(0);
                     continue;
                 }
@@ -1182,6 +1329,8 @@ int main(int argc, char *argv[])
                     fprintf(stderr,
                             "[error] 一般模式需要 2 小時內星曆，請先更新 %s\n",
                             kBncRinexDir);
+                    gui_report_alert(2,
+                                     "General mode requires RINEX data within 2 hours. Please update BRDM.");
                     map_gui_set_run_state(0);
                     continue;
                 }
@@ -1212,6 +1361,7 @@ int main(int argc, char *argv[])
                               cfg.usrp_external_clk ? 1 : 0,
                               cfg.byte_output ? USRP_SAMPLE_FMT_BYTE : USRP_SAMPLE_FMT_SHORT) != 0) {
                     fprintf(stderr, "[warn] USRP 初始化失敗或未連線，將僅產生檔案輸出\n");
+                    gui_report_alert(1, "USRP initialization failed or device is disconnected. File output mode will be used.");
                 } else {
                     usrp_ready = true;
                     usrp_freq_in_use = tx_freq;
@@ -1235,6 +1385,7 @@ int main(int argc, char *argv[])
             double start_sow = 0.0;
             if (utc_to_bdt(now_utc, &start_week, &start_sow) != 0) {
                 fprintf(stderr, "[error] 目前時間轉換失敗\n");
+                gui_report_alert(2, "Current time conversion failed.");
                 map_gui_set_run_state(0);
                 continue;
             }
@@ -1246,11 +1397,33 @@ int main(int argc, char *argv[])
             if (!cfg.interference_mode && !simulator_ready) {
                 if (!init_simulator(&cfg, next_bdt)) {
                     fprintf(stderr, "[error] 初始化失敗\n");
+                    gui_report_alert(2, "Simulator initialization failed.");
                     map_gui_set_run_state(0);
                     continue;
                 }
                 simulator_ready = true;
             }
+
+            if (!cuda_runtime_enabled) {
+                fprintf(stderr,
+                        "[error] CUDA 執行已被停用。若要啟用請移除 BDS_DISABLE_CUDA 或設為 0\n");
+                gui_report_alert(2,
+                                 "CUDA runtime is disabled. Remove BDS_DISABLE_CUDA (or set it to 0) to enable.");
+                map_gui_set_run_state(0);
+                continue;
+            }
+
+            if (!cuda_runtime_smoke_ok) {
+                gui_report_alert(2,
+                                 "CUDA runtime probe failed in this environment (driver/toolkit mismatch likely). "
+                                 "Use matching CUDA toolkit version (e.g., driver 13.1 with nvcc 13.1). "
+                                 "Set BDS_SKIP_CUDA_SMOKE=1 to force run.");
+                map_gui_set_run_state(0);
+                continue;
+            }
+
+            // Switch to running UI only after all start prechecks pass.
+            map_gui_set_run_state(1);
 
             if (!gui_started) {
                 start_map_gui(next_bdt);
@@ -1324,6 +1497,7 @@ int main(int argc, char *argv[])
                 print_pending_path_queue();
             } else {
                 fprintf(stderr, "[warn] 路徑佇列已滿 (%d)，已忽略: %s\n", MAX_PATH_QUEUE, cmd.path_file);
+                gui_report_alert(1, "Path queue is full (max 5 segments). New path was ignored.");
             }
         }
 
@@ -1333,6 +1507,7 @@ int main(int argc, char *argv[])
             uint32_t traj_dur = 0;
             if (load_last_llh_from_path(q.path_file, last_llh, &traj_dur) != 0) {
                 fprintf(stderr, "[error] 軌跡檔讀取失敗，已跳過: %s\n", q.path_file);
+                gui_report_alert(2, "Path file read failed. The segment was skipped.");
                 continue;
             }
 

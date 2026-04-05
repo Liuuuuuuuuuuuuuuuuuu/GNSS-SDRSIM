@@ -44,10 +44,24 @@ typedef struct {
 } signal_engine_state_t;
 
 static signal_engine_state_t g_sig_state = {0};
+static bool g_prn_tables_ready = false;
+
+static void ensure_prn_tables_ready(void)
+{
+    if (g_prn_tables_ready) return;
+    init_prn_tables();
+    g_prn_tables_ready = true;
+}
 
 void reset_signal_engine_state(void)
 {
     memset(&g_sig_state, 0, sizeof(g_sig_state));
+}
+
+extern "C" int cuda_runtime_smoke_test(void)
+{
+    cudaError_t st = cudaFree(0);
+    return (st == cudaSuccess) ? 1 : 0;
 }
 
 /* Lightweight PRN jammer channel state used by GPU interference synthesis. */
@@ -87,12 +101,25 @@ static inline uint32_t host_mix32(uint32_t x)
     return x;
 }
 
+static inline int jam_pseudo_nav_sign(uint32_t seed, int prn, int is_gps, int nav_bit_idx)
+{
+    /* Repeat every 300 bits (~6 s) to mimic structured nav data cadence. */
+    int frame_bit = nav_bit_idx % 300;
+    uint32_t key = seed
+                 ^ ((uint32_t)prn * 0x9e3779b9U)
+                 ^ ((uint32_t)is_gps * 0x85ebca6bU)
+                 ^ ((uint32_t)frame_bit * 0x27d4eb2dU);
+    return (host_mix32(key) & 1U) ? 1 : -1;
+}
+
 static void generate_interference_signal(const sim_config_t *cfg,
                                          path_t *path,
                                          const coord_t *usr0,
                                          const coord_t *ref_llh,
                                          double start_bdt)
 {
+    ensure_prn_tables_ready();
+
     const double fs = cfg->fs;
     const int samp_per_ms = (int)(fs / 1000.0 + 0.5);
     const int step_ms = cfg->step_ms;
@@ -131,8 +158,25 @@ static void generate_interference_signal(const sim_config_t *cfg,
     jam_prn_state_t jam_ch[JAM_MAX_PRN];
     int n_jam_ch = 0;
 
-    const int bds_prn_count = use_bds ? 63 : 0;
-    const int gps_prn_count = use_gps ? CUDA_GPS_PRN_MAX : 0;
+    const int total_cfg_ch = (cfg->max_ch > 0) ? cfg->max_ch : 16;
+    int target_total = total_cfg_ch;
+    if (target_total < 1) target_total = 1;
+    if (target_total > JAM_MAX_PRN) target_total = JAM_MAX_PRN;
+
+    int bds_prn_count = 0;
+    int gps_prn_count = 0;
+    if (use_bds && use_gps) {
+        bds_prn_count = (int)llround((double)target_total * (63.0 / (63.0 + (double)CUDA_GPS_PRN_MAX)));
+        if (bds_prn_count < 1) bds_prn_count = 1;
+        if (bds_prn_count > target_total - 1) bds_prn_count = target_total - 1;
+        gps_prn_count = target_total - bds_prn_count;
+    } else if (use_bds) {
+        bds_prn_count = target_total;
+    } else if (use_gps) {
+        gps_prn_count = target_total;
+    }
+    if (bds_prn_count > 63) bds_prn_count = 63;
+    if (gps_prn_count > CUDA_GPS_PRN_MAX) gps_prn_count = CUDA_GPS_PRN_MAX;
 
     /* Back off total jammer power to prevent heavy clipping after all-PRN summation. */
     double amp_base = cfg->gain * 13000.0 * JAM_AMP_SCALE;
@@ -152,8 +196,15 @@ static void generate_interference_signal(const sim_config_t *cfg,
     uint32_t seed = cfg->seed ? (uint32_t)cfg->seed : 1u;
 
     if (use_bds) {
-        for (int prn = 1; prn <= 63 && n_jam_ch < JAM_MAX_PRN; ++prn) {
-            uint32_t h = seed ^ (uint32_t)(prn * 0x9e3779b9U);
+        uint8_t used[64] = {0};
+        for (int k = 0; k < bds_prn_count && n_jam_ch < JAM_MAX_PRN; ++k) {
+            uint32_t h = host_mix32(seed ^ (uint32_t)((k + 1) * 0x9e3779b9U));
+            int prn = 1 + (int)(h % 63U);
+            while (used[prn]) {
+                prn += 1;
+                if (prn > 63) prn = 1;
+            }
+            used[prn] = 1;
             jam_ch[n_jam_ch].prn = (int16_t)prn;
             jam_ch[n_jam_ch].is_gps = 0;
             jam_ch[n_jam_ch].nav_sign = 1;
@@ -167,8 +218,15 @@ static void generate_interference_signal(const sim_config_t *cfg,
         }
     }
     if (use_gps) {
-        for (int prn = 1; prn <= CUDA_GPS_PRN_MAX && n_jam_ch < JAM_MAX_PRN; ++prn) {
-            uint32_t h = (seed ^ 0x85ebca6bU) ^ (uint32_t)(prn * 0x27d4eb2dU);
+        uint8_t used[CUDA_GPS_PRN_MAX + 1] = {0};
+        for (int k = 0; k < gps_prn_count && n_jam_ch < JAM_MAX_PRN; ++k) {
+            uint32_t h = host_mix32((seed ^ 0x85ebca6bU) ^ (uint32_t)((k + 1) * 0x27d4eb2dU));
+            int prn = 1 + (int)(h % (uint32_t)CUDA_GPS_PRN_MAX);
+            while (used[prn]) {
+                prn += 1;
+                if (prn > CUDA_GPS_PRN_MAX) prn = 1;
+            }
+            used[prn] = 1;
             jam_ch[n_jam_ch].prn = (int16_t)prn;
             jam_ch[n_jam_ch].is_gps = 1;
             jam_ch[n_jam_ch].nav_sign = 1;
@@ -177,7 +235,8 @@ static void generate_interference_signal(const sim_config_t *cfg,
             jam_ch[n_jam_ch].doppler_hz = (float)(((int)(h % 5001U)) - 2500); /* +/-2.5kHz */
             jam_ch[n_jam_ch].carr_phase0 = (float)(CUDA_PI2 * ((double)(h & 0xFFFFU) / 65535.0));
             jam_ch[n_jam_ch].code_phase0 = (float)(h % CUDA_CODE_LEN);
-            jam_ch[n_jam_ch].chip_rate = (float)GPS_CA_CHIPRATE;
+            /* d_gps_ca_wave is expanded to 2046 entries, so use CODE_LEN-scale chip rate. */
+            jam_ch[n_jam_ch].chip_rate = (float)CHIPRATE;
             ++n_jam_ch;
         }
     }
@@ -251,11 +310,11 @@ static void generate_interference_signal(const sim_config_t *cfg,
                 if (nav_bit_idx != last_nav_bit_idx) {
                     last_nav_bit_idx = nav_bit_idx;
                     for (int i = 0; i < n_jam_ch; ++i) {
-                        uint32_t key = seed
-                                     ^ ((uint32_t)jam_ch[i].prn * 0x9e3779b9U)
-                                     ^ ((uint32_t)jam_ch[i].is_gps * 0x85ebca6bU)
-                                     ^ (uint32_t)nav_bit_idx;
-                        jam_ch[i].nav_sign = (host_mix32(key) & 1U) ? 1 : -1;
+                        jam_ch[i].nav_sign = (int8_t)jam_pseudo_nav_sign(
+                            seed,
+                            (int)jam_ch[i].prn,
+                            (int)jam_ch[i].is_gps,
+                            nav_bit_idx);
                     }
                 }
 
@@ -954,6 +1013,8 @@ static void update_channels_path(channel_t *ch,int n,
 /* --------------------------- 信號產生 ------------------------------*/
 void generate_signal(const sim_config_t *cfg)
 {
+    ensure_prn_tables_ready();
+
     coord_t usr={0};
     path_t path={0};
     if(cfg->path_type==1)       load_path_xyz(cfg->path_file,&path);
