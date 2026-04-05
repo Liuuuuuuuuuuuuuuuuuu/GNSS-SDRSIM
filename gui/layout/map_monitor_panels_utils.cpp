@@ -2,6 +2,7 @@
 
 #include "gui/layout/monitor_panel_utils.h"
 #include "gui/layout/quad_panel_layout.h"
+#include "gui/core/gui_i18n.h"
 #include "gui/core/rf_mode_utils.h"
 
 #include <QFontMetrics>
@@ -94,7 +95,9 @@ void map_draw_spectrum_panel(QPainter &p, int win_width, int win_height,
     p.restore();
   }
 
-  draw_panel_title(p, panel_x, panel_y, panel_h, "Signal Spectrum");
+  const QByteArray spectrum_title =
+      gui_i18n_text(in.language, "monitor.spectrum").toUtf8();
+  draw_panel_title(p, panel_x, panel_y, panel_h, spectrum_title.constData());
 
   const int db_max = 0;
   const int db_mid = -15;
@@ -138,7 +141,9 @@ void map_draw_waterfall_panel(QPainter &p, int win_width, int win_height,
     p.drawImage(draw_rect, in.waterfall_image);
   }
   draw_monitor_inner_grid(p, draw_rect, QColor("#c4d2e4"), QColor(196, 210, 228, 56), 6, 4);
-  draw_panel_title(p, panel_x, panel_y, panel_h, "Signal Waterfall");
+  const QByteArray waterfall_title =
+      gui_i18n_text(in.language, "monitor.waterfall").toUtf8();
+  draw_panel_title(p, panel_x, panel_y, panel_h, waterfall_title.constData());
 
   p.setPen(QColor("#c4d2e4"));
   p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top()), Qt::AlignRight | Qt::AlignVCenter, "0s");
@@ -200,7 +205,9 @@ void map_draw_time_panel(QPainter &p, int win_width, int win_height,
     p.restore();
   }
 
-  draw_panel_title(p, panel_x, panel_y, panel_h, "Signal Time-Domain");
+  const QByteArray time_title =
+      gui_i18n_text(in.language, "monitor.time").toUtf8();
+  draw_panel_title(p, panel_x, panel_y, panel_h, time_title.constData());
   p.setPen(QColor("#c4d2e4"));
   p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top()), Qt::AlignRight | Qt::AlignVCenter, "+1.0");
   p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top() + draw_rect.height() / 4), Qt::AlignRight | Qt::AlignVCenter, "+0.5");
@@ -249,7 +256,9 @@ void map_draw_constellation_panel(QPainter &p, int win_width, int win_height,
     }
   }
 
-  draw_panel_title(p, panel_x, panel_y, panel_h, "Signal Constellation");
+  const QByteArray const_title =
+      gui_i18n_text(in.language, "monitor.constellation").toUtf8();
+  draw_panel_title(p, panel_x, panel_y, panel_h, const_title.constData());
   p.setPen(QColor("#c4d2e4"));
   draw_monitor_x_labels(p, draw_rect, draw_rect.bottom() + 8, "-1", "0", "+1");
   p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "+1");

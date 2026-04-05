@@ -4,8 +4,11 @@
 #include <QPainter>
 #include <QRect>
 
+#include "gui/core/gui_i18n.h"
+
 struct MapOsmControlsInput {
   QRect panel;
+  GuiLanguage language = GuiLanguage::English;
   bool running_ui = false;
   bool can_undo = false;
   bool dji_on = false;
@@ -20,6 +23,7 @@ struct MapOsmControlsInput {
 };
 
 struct MapOsmControlsState {
+  QRect lang_btn_rect;
   QRect back_btn_rect;
   QRect nfz_btn_rect;
   QRect dark_mode_btn_rect;

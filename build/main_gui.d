@@ -101,11 +101,15 @@ build/main_gui.o: main_gui.cpp main_gui.h bdssim.h coord.h orbits.h \
  gui/map/map_fallback_land.h gui/map/map_overlay_utils.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QPoint \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qpoint.h \
- gui/map/map_hover_utils.h gui/layout/map_control_panel_utils.h \
+ gui/map/map_hover_utils.h gui/core/gui_i18n.h \
+ gui/layout/map_control_panel_utils.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QColor \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h \
  gui/core/signal_snapshot.h globals.h \
  gui/layout/map_monitor_panels_utils.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QImage \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qimage.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qimage.h gui/core/gui_i18n.h \
+ gui/core/gui_language_runtime_utils.h \
  gui/map/map_osm_interaction_utils.h gui/map/map_osm_panel_utils.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QPixmap \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qpixmap.h gui/nfz/dji_nfz.h \
@@ -148,33 +152,73 @@ build/main_gui.o: main_gui.cpp main_gui.h bdssim.h coord.h orbits.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qguiapplication.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qinputmethod.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QCheckBox \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qcheckbox.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractbutton.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qicon.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QCloseEvent \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qevent.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qfile.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qfiledevice.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qvector2d.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qtouchdevice.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QColorDialog \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qcolordialog.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qdialog.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QCursor \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QDialog \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qdialog.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QDialogButtonBox \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qdialogbuttonbox.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QFormLayout \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qformlayout.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLayout \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlayout.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlayoutitem.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qboxlayout.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlayout.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qgridlayout.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QHBoxLayout \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qboxlayout.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QJsonDocument \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qjsondocument.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QJsonObject \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qjsonobject.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLabel \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlabel.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qframe.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLineEdit \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlineedit.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qframe.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qtextcursor.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qtextformat.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QLinearGradient \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qbrush.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidget \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlistwidget.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlistview.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractitemview.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractscrollarea.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qabstractitemmodel.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qitemselectionmodel.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractitemdelegate.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qstyleoption.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractspinbox.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qvalidator.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qslider.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractslider.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qstyle.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtabbar.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtabwidget.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qrubberband.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidgetItem \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QMouseEvent \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/QPaintEvent \
  /usr/include/x86_64-linux-gnu/qt5/QtNetwork/QNetworkAccessManager \
  /usr/include/x86_64-linux-gnu/qt5/QtNetwork/qnetworkaccessmanager.h \
  /usr/include/x86_64-linux-gnu/qt5/QtNetwork/qtnetworkglobal.h \
@@ -211,33 +255,25 @@ build/main_gui.o: main_gui.cpp main_gui.h bdssim.h coord.h orbits.h \
  /usr/include/x86_64-linux-gnu/qt5/QtNetwork/qnetworkrequest.h \
  /usr/include/x86_64-linux-gnu/qt5/QtNetwork/QNetworkAccessManager \
  /usr/include/x86_64-linux-gnu/qt5/QtNetwork/QNetworkRequest \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QPaintEvent \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QPen \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qpen.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidget \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlistwidget.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlistview.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractitemview.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractscrollarea.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qabstractitemmodel.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qitemselectionmodel.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractitemdelegate.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qstyleoption.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractspinbox.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qvalidator.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qicon.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qslider.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractslider.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qstyle.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtabbar.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtabwidget.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qrubberband.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidgetItem \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QPushButton \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qpushbutton.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QShortcut \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qshortcut.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QSlider \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qslider.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QSpinBox \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qspinbox.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QThread \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qthread.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qdeadlinetimer.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qelapsedtimer.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QTimer \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qtimer.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qbasictimer.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QWheelEvent \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QWindow \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qwindow.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QEvent \
@@ -246,14 +282,13 @@ build/main_gui.o: main_gui.cpp main_gui.h bdssim.h coord.h orbits.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qmargins.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qsurface.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qsurfaceformat.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/QTimer \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qtimer.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qbasictimer.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/QWheelEvent \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h path.h \
- main_gui_state.inl main_gui_path_methods.inl main_gui_widget_methods.inl \
- main_gui_c_api.inl
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QVBoxLayout path.h \
+ main_gui_state.inl gui/core/map_widget_ui_methods.inl \
+ gui/tutorial/map_widget_tutorial_methods.inl \
+ gui/control/map_widget_control_methods.inl main_gui_path_methods.inl \
+ main_gui_widget_methods.inl main_gui_c_api.inl
 main_gui.h:
 bdssim.h:
 coord.h:
@@ -369,12 +404,17 @@ gui/map/map_overlay_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QPoint:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qpoint.h:
 gui/map/map_hover_utils.h:
+gui/core/gui_i18n.h:
 gui/layout/map_control_panel_utils.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QColor:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h:
 gui/core/signal_snapshot.h:
 globals.h:
 gui/layout/map_monitor_panels_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QImage:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qimage.h:
+gui/core/gui_i18n.h:
+gui/core/gui_language_runtime_utils.h:
 gui/map/map_osm_interaction_utils.h:
 gui/map/map_osm_panel_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QPixmap:
@@ -427,33 +467,73 @@ gui/tutorial/tutorial_flow_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qguiapplication.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qinputmethod.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QCheckBox:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qcheckbox.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractbutton.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qicon.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QCloseEvent:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qevent.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qfile.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qfiledevice.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qvector2d.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qtouchdevice.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QColorDialog:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qcolordialog.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qdialog.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QCursor:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QDialog:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qdialog.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QDialogButtonBox:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qdialogbuttonbox.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QFormLayout:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qformlayout.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLayout:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlayout.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlayoutitem.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qboxlayout.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlayout.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qgridlayout.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QHBoxLayout:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qboxlayout.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QJsonDocument:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qjsondocument.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QJsonObject:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qjsonobject.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLabel:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlabel.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qframe.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLineEdit:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlineedit.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qframe.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qtextcursor.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qtextformat.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QLinearGradient:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qbrush.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidget:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlistwidget.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlistview.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractitemview.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractscrollarea.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qabstractitemmodel.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qitemselectionmodel.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractitemdelegate.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qstyleoption.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractspinbox.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qvalidator.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qslider.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractslider.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qstyle.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtabbar.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtabwidget.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qrubberband.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidgetItem:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QMouseEvent:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/QPaintEvent:
 /usr/include/x86_64-linux-gnu/qt5/QtNetwork/QNetworkAccessManager:
 /usr/include/x86_64-linux-gnu/qt5/QtNetwork/qnetworkaccessmanager.h:
 /usr/include/x86_64-linux-gnu/qt5/QtNetwork/qtnetworkglobal.h:
@@ -490,33 +570,25 @@ gui/tutorial/tutorial_flow_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtNetwork/qnetworkrequest.h:
 /usr/include/x86_64-linux-gnu/qt5/QtNetwork/QNetworkAccessManager:
 /usr/include/x86_64-linux-gnu/qt5/QtNetwork/QNetworkRequest:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QPaintEvent:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QPen:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpen.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidget:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlistwidget.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlistview.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractitemview.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractscrollarea.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qabstractitemmodel.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qitemselectionmodel.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractitemdelegate.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qstyleoption.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractspinbox.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qvalidator.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qicon.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qslider.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractslider.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qstyle.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtabbar.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtabwidget.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qrubberband.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidgetItem:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QPushButton:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qpushbutton.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QShortcut:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qshortcut.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QSlider:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qslider.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QSpinBox:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qspinbox.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QThread:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qthread.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qdeadlinetimer.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qelapsedtimer.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QTimer:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qtimer.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qbasictimer.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QWheelEvent:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QWindow:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qwindow.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QEvent:
@@ -525,14 +597,14 @@ gui/tutorial/tutorial_flow_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qmargins.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qsurface.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qsurfaceformat.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/QTimer:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qtimer.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qbasictimer.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/QWheelEvent:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QVBoxLayout:
 path.h:
 main_gui_state.inl:
+gui/core/map_widget_ui_methods.inl:
+gui/tutorial/map_widget_tutorial_methods.inl:
+gui/control/map_widget_control_methods.inl:
 main_gui_path_methods.inl:
 main_gui_widget_methods.inl:
 main_gui_c_api.inl:

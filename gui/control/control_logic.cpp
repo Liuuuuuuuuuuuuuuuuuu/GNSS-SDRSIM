@@ -57,7 +57,7 @@ bool control_logic_handle_click(int x, int y, int win_width, int win_height, Gui
     if (rect_hit(lo.btn_start, x, y)) {
         if (!ctrl->running_ui && ctrl->interference_selection >= 0) {
             if (ctrl->interference_selection == 0 && !ctrl->spoof_allowed) {
-                map_gui_push_alert(2, "SPOOF mode requires a valid RINEX file. JAM only is available right now.");
+                map_gui_push_alert(2, "__i18n__:alert.spoof_rinex_required");
                 return true;
             }
             // Enter running UI immediately so STOP and monitor widgets appear
@@ -73,7 +73,7 @@ bool control_logic_handle_click(int x, int y, int win_width, int win_height, Gui
         if (ctrl->running_ui) return false;
         if (jam_idx == 0) {
             if (!ctrl->spoof_allowed) {
-                map_gui_push_alert(2, "SPOOF mode requires a valid RINEX file. JAM only is available right now.");
+                map_gui_push_alert(2, "__i18n__:alert.spoof_rinex_required");
                 return true;
             }
             ctrl->interference_selection = 0;

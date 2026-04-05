@@ -3,9 +3,12 @@
 
 #include <QString>
 
+#include "gui/core/gui_i18n.h"
+
 int tutorial_last_step();
 int tutorial_spotlight_count_for_step(int step);
-QString tutorial_step_title(int step);
-QString tutorial_step_body(int step, bool detailed, bool running_ui);
+QString tutorial_step_title(int step, GuiLanguage language);
+QString tutorial_step_body(int step, bool detailed, bool running_ui,
+						  GuiLanguage language);
 
 #endif

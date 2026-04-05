@@ -80,11 +80,14 @@ build/gui/map/map_osm_panel_utils.o: gui/map/map_osm_panel_utils.cpp \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QPixmap \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qpixmap.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QPoint \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qpoint.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QRect \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h gui/nfz/dji_nfz.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QString \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h gui/geo/geo_io.h \
- gui/map/map_osm_controls_utils.h gui/map/map_osm_status_utils.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h gui/nfz/dji_nfz.h \
+ gui/geo/geo_io.h gui/core/gui_i18n.h gui/map/map_osm_controls_utils.h \
+ gui/map/map_osm_status_utils.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h \
  gui/map/map_tile_utils.h gui/geo/osm_projection.h \
@@ -171,12 +174,15 @@ gui/map/map_osm_panel_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QPixmap:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpixmap.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QPoint:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qpoint.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QRect:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h:
-gui/nfz/dji_nfz.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QString:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
+gui/nfz/dji_nfz.h:
 gui/geo/geo_io.h:
+gui/core/gui_i18n.h:
 gui/map/map_osm_controls_utils.h:
 gui/map/map_osm_status_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList:

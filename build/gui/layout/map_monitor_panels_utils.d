@@ -81,7 +81,10 @@ build/gui/layout/map_monitor_panels_utils.o: \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontinfo.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
- gui/core/control_state.h gui/core/signal_snapshot.h globals.h rinex.h \
+ gui/core/control_state.h gui/core/gui_i18n.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QString \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h \
+ gui/core/signal_snapshot.h globals.h rinex.h \
  gui/layout/monitor_panel_utils.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QRect \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h \
@@ -177,6 +180,9 @@ gui/layout/map_monitor_panels_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:
 gui/core/control_state.h:
+gui/core/gui_i18n.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QString:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
 gui/core/signal_snapshot.h:
 globals.h:
 rinex.h:

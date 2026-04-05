@@ -6,9 +6,12 @@
 
 #include <chrono>
 
+#include "gui/core/gui_i18n.h"
+
 struct TutorialOverlayInput {
   int win_width = 0;
   int win_height = 0;
+  GuiLanguage language = GuiLanguage::English;
   bool overlay_visible = false;
   bool running_ui = false;
   bool detailed = false;

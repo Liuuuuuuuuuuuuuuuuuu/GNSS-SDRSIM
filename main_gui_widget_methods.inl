@@ -1,5 +1,6 @@
 void MapWidget::onTick() {
   static bool last_running_ui = false;
+  static bool last_tx_active = false;
   if (!g_running.load()) {
     close();
     return;
@@ -62,6 +63,14 @@ void MapWidget::onTick() {
   const QRect bottom_right_rect(win_width / 2, win_height / 2,
                                 win_width - win_width / 2,
                                 win_height - win_height / 2);
+  const bool tx_active_now = g_tx_active.load();
+  if (!running_ui) {
+    last_tx_active = false;
+  } else if (tx_active_now != last_tx_active) {
+    last_tx_active = tx_active_now;
+    update(osm_rect);
+  }
+
   if (!map_panel_bootstrap_redraw_done_ && !map_rect.isEmpty()) {
     update(map_rect);
     map_panel_bootstrap_redraw_done_ = true;
@@ -91,18 +100,28 @@ void MapWidget::onTick() {
       used_mixed_fallback = !sats_.empty();
     }
     char buf[64];
-    const char *sys_name =
+    const QString sys_name =
         (signal_mode == SIG_MODE_GPS)
-            ? "GPS"
-            : ((signal_mode == SIG_MODE_MIXED) ? "BDS+GPS" : "Non-GEO BDS");
+            ? tr_text("scene.sys_gps")
+            : ((signal_mode == SIG_MODE_MIXED) ? tr_text("scene.sys_mixed")
+                                               : tr_text("scene.sys_bds"));
     if (interference_mode)
-      std::snprintf(buf, sizeof(buf), "JAM %s (Pseudo-Legit PRN)", sys_name);
+      std::snprintf(buf, sizeof(buf), "%s",
+                    tr_text("scene.jam_fmt").arg(sys_name).toUtf8().constData());
     else if (used_mixed_fallback)
-      std::snprintf(buf, sizeof(buf), "%s Satellites: %zu (fallback mixed)",
-                    sys_name, sats_.size());
+      std::snprintf(buf, sizeof(buf), "%s",
+                    tr_text("scene.sat_fallback_fmt")
+                        .arg(sys_name)
+                        .arg((int)sats_.size())
+                        .toUtf8()
+                        .constData());
     else
-      std::snprintf(buf, sizeof(buf), "%s Satellites: %zu", sys_name,
-                    sats_.size());
+      std::snprintf(buf, sizeof(buf), "%s",
+                    tr_text("scene.sat_fmt")
+                        .arg(sys_name)
+                        .arg((int)sats_.size())
+                        .toUtf8()
+                        .constData());
     stat_text_ = buf;
     redraw = true;
     scene_dirty = true;
@@ -185,6 +204,7 @@ void MapWidget::onTick() {
     }
   }
 
+  update_alert_overlay();
   refresh_tick_timer();
 }
 

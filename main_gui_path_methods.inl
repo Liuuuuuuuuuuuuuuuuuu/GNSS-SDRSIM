@@ -82,11 +82,11 @@ void MapWidget::onRouteReply(QNetworkReply *reply) {
         if (it != route_prefetch_cache_.end() && it->second.size() >= 2) {
           preview_polyline_ = it->second;
           has_preview_segment_ = true;
-          plan_status_ = "Road preview ready: right-click to confirm";
+          plan_status_ = tr_text("path.road_ready").toStdString();
         }
       } else {
         has_preview_segment_ = false;
-        plan_status_ = "Road routing failed: no drivable map road path";
+        plan_status_ = tr_text("path.road_failed").toStdString();
       }
       update(osm_panel_rect_);
     }
@@ -133,7 +133,7 @@ void MapWidget::set_preview_target(const QPoint &pos, int mode) {
   double slat = 0.0;
   double slon = 0.0;
   if (!get_current_plan_anchor(&slat, &slon)) {
-    plan_status_ = "Path planning needs a valid start anchor";
+    plan_status_ = tr_text("path.need_anchor").toStdString();
     return;
   }
 
@@ -147,7 +147,7 @@ void MapWidget::set_preview_target(const QPoint &pos, int mode) {
 
   if (distance_m_approx(slat, slon, lat, lon) <= 0.5) {
     has_preview_segment_ = false;
-    plan_status_ = "Preview point too close to start";
+    plan_status_ = tr_text("path.too_close").toStdString();
     return;
   }
 
@@ -155,7 +155,7 @@ void MapWidget::set_preview_target(const QPoint &pos, int mode) {
     preview_polyline_.push_back({wrap_lon_deg(slon), slat});
     preview_polyline_.push_back({wrap_lon_deg(lon), lat});
     has_preview_segment_ = true;
-    plan_status_ = "Line preview ready: right-click to confirm";
+    plan_status_ = tr_text("path.line_ready").toStdString();
     start_route_prefetch(slat, slon, lat, lon);
     return;
   }
@@ -166,25 +166,25 @@ void MapWidget::set_preview_target(const QPoint &pos, int mode) {
   if (it != route_prefetch_cache_.end() && it->second.size() >= 2) {
     preview_polyline_ = it->second;
     has_preview_segment_ = true;
-    plan_status_ = "Road preview ready (cached): right-click to confirm";
+    plan_status_ = tr_text("path.road_ready_cached").toStdString();
     return;
   }
 
   start_route_prefetch(slat, slon, lat, lon);
   has_preview_segment_ = false;
-  plan_status_ = "Road preview loading...";
+  plan_status_ = tr_text("path.road_loading").toStdString();
 }
 
 void MapWidget::confirm_preview_segment() {
   if (!has_preview_segment_) {
-    plan_status_ = "No preview path to confirm";
+    plan_status_ = tr_text("path.no_preview").toStdString();
     return;
   }
 
   {
     std::lock_guard<std::mutex> lk(g_path_seg_mtx);
     if ((int)g_path_segments.size() >= kMaxQueuedSegments) {
-      plan_status_ = "Path queue is full (max 5)";
+      plan_status_ = tr_text("path.queue_full").toStdString();
       return;
     }
   }
@@ -202,12 +202,12 @@ void MapWidget::confirm_preview_segment() {
                                preview_end_lat_deg_, preview_end_lon_deg_,
                                preview_mode_, vmax_mps, accel_mps2,
                                &preview_polyline_, file_path, &seg_polyline)) {
-    plan_status_ = "Failed to build path file from preview";
+    plan_status_ = tr_text("path.build_failed").toStdString();
     return;
   }
 
   if (!enqueue_path_file_name(file_path)) {
-    plan_status_ = "Queue rejected path (max 5 active segments)";
+    plan_status_ = tr_text("path.queue_reject").toStdString();
     return;
   }
 
@@ -228,20 +228,20 @@ void MapWidget::confirm_preview_segment() {
 
   has_preview_segment_ = false;
   preview_polyline_.clear();
-  plan_status_ = "Segment confirmed and queued";
+  plan_status_ = tr_text("path.segment_queued").toStdString();
 }
 
 void MapWidget::try_undo_last_segment() {
   char removed[256] = {0};
   if (!delete_last_queued_path(removed, sizeof(removed))) {
-    plan_status_ = "Cannot undo: last segment is already executing or queue is empty";
+    plan_status_ = tr_text("path.undo_fail").toStdString();
     return;
   }
 
   map_gui_notify_path_segment_undo();
   has_preview_segment_ = false;
   preview_polyline_.clear();
-  plan_status_ = "Last queued segment has been undone";
+  plan_status_ = tr_text("path.undo_ok").toStdString();
 }
 
 bool MapWidget::lonlat_to_osm_screen(double lat_deg, double lon_deg,
@@ -319,8 +319,8 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
       copy.start_lon_deg = seg.start_lon_deg;
       copy.end_lat_deg = seg.end_lat_deg;
       copy.end_lon_deg = seg.end_lon_deg;
-      copy.mode = seg.mode;
-      copy.state = seg.state;
+      copy.mode = map_osm_panel_path_mode_from_int(seg.mode);
+      copy.state = map_osm_panel_segment_state_from_int(seg.state);
       copy.polyline = seg.polyline;
       segs.push_back(std::move(copy));
     }
@@ -328,6 +328,7 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
 
   MapOsmPanelInput osm_in;
   osm_in.panel = panel;
+  osm_in.language = ui_language_;
   osm_in.osm_zoom = osm_zoom_;
   osm_in.osm_zoom_base = osm_zoom_base_;
   osm_in.osm_center_px_x = osm_center_px_x_;
@@ -344,7 +345,7 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
   osm_in.selected_lat_deg = selected_lat_deg_;
   osm_in.selected_lon_deg = selected_lon_deg_;
   osm_in.has_preview_segment = has_preview_segment_;
-  osm_in.preview_mode = preview_mode_;
+  osm_in.preview_mode = map_osm_panel_path_mode_from_int(preview_mode_);
   osm_in.preview_start_lat_deg = preview_start_lat_deg_;
   osm_in.preview_start_lon_deg = preview_start_lon_deg_;
   osm_in.preview_end_lat_deg = preview_end_lat_deg_;
@@ -392,6 +393,7 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
 
   MapOsmPanelState osm_out;
   map_draw_osm_panel_overlay(p, osm_in, &osm_out);
+  lang_btn_rect_ = osm_out.lang_btn_rect;
   back_btn_rect_ = osm_out.back_btn_rect;
   nfz_btn_rect_ = osm_out.nfz_btn_rect;
   dark_mode_btn_rect_ = osm_out.dark_mode_btn_rect;

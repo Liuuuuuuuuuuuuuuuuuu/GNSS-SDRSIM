@@ -81,11 +81,11 @@ build/gui/layout/map_control_panel_utils.o: \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QString \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h \
- gui/core/control_state.h gui/core/signal_snapshot.h globals.h rinex.h \
- gui/layout/control_layout.h gui/control/control_paint.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QColor \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h \
- gui/core/rf_mode_utils.h \
+ gui/core/control_state.h gui/core/gui_i18n.h gui/core/signal_snapshot.h \
+ globals.h rinex.h gui/layout/control_layout.h \
+ gui/control/control_paint.h gui/core/rf_mode_utils.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QLinearGradient \
@@ -93,8 +93,12 @@ build/gui/layout/map_control_panel_utils.o: \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QPainterPath \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainterpath.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QPen \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qpen.h bdssim.h coord.h orbits.h \
- channel.h globals.h
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qpen.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QRegularExpression \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qregularexpression.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qvariant.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qmap.h bdssim.h coord.h \
+ orbits.h channel.h globals.h
 gui/layout/map_control_panel_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QPainter:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainter.h:
@@ -176,14 +180,15 @@ gui/layout/map_control_panel_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QString:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QColor:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h:
 gui/core/control_state.h:
+gui/core/gui_i18n.h:
 gui/core/signal_snapshot.h:
 globals.h:
 rinex.h:
 gui/layout/control_layout.h:
 gui/control/control_paint.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/QColor:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h:
 gui/core/rf_mode_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:
@@ -193,6 +198,10 @@ gui/core/rf_mode_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainterpath.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QPen:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpen.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QRegularExpression:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qregularexpression.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qvariant.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qmap.h:
 bdssim.h:
 coord.h:
 orbits.h:

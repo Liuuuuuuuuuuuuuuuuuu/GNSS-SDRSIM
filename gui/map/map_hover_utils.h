@@ -6,10 +6,12 @@
 #include <QRect>
 
 #include "gui/core/control_state.h"
+#include "gui/core/gui_i18n.h"
 
 struct MapHoverHelpInput {
   int win_width = 0;
   int win_height = 0;
+  GuiLanguage language = GuiLanguage::English;
   bool tutorial_overlay_visible = false;
   bool dark_map_mode = false;
   bool show_search_return = false;

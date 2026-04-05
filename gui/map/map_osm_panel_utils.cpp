@@ -78,6 +78,7 @@ void map_draw_osm_panel_background(QPainter &p, const MapOsmPanelInput &in) {
 void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
                                 MapOsmPanelState *out) {
   if (out) {
+    out->lang_btn_rect = QRect();
     out->back_btn_rect = QRect();
     out->nfz_btn_rect = QRect();
     out->dark_mode_btn_rect = QRect();
@@ -139,12 +140,14 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
     }
   }
 
-  std::vector<MapOsmPanelSegment> segs;
-  if (in.path_segments)
-    segs = *in.path_segments;
+  static const std::vector<MapOsmPanelSegment> kEmptySegments;
+  const std::vector<MapOsmPanelSegment> &segs =
+      in.path_segments ? *in.path_segments : kEmptySegments;
 
   for (const auto &seg : segs) {
-    QColor c = (seg.state == 1) ? QColor("#f59e0b") : QColor("#22c55e");
+    QColor c = (seg.state == MapOsmPanelSegment::SegmentState::Executing)
+                   ? QColor("#f59e0b")
+                   : QColor("#22c55e");
     p.setPen(QPen(c, 4, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
     p.setBrush(Qt::NoBrush);
 
@@ -190,7 +193,9 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
     QPoint a, b;
     if (draw_screen_point(in, in.preview_start_lat_deg, in.preview_start_lon_deg, &a) &&
         draw_screen_point(in, in.preview_end_lat_deg, in.preview_end_lon_deg, &b)) {
-      QColor c = (in.preview_mode == 1) ? QColor("#60a5fa") : QColor("#fbbf24");
+      QColor c = (in.preview_mode == MapOsmPanelSegment::PathMode::Line)
+             ? QColor("#60a5fa")
+             : QColor("#fbbf24");
       p.setPen(QPen(c, 4, Qt::DashLine, Qt::RoundCap, Qt::RoundJoin));
       p.setBrush(Qt::NoBrush);
 
@@ -246,6 +251,7 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
   long long elapsed_sec = in.running_ui ? in.elapsed_sec : 0;
   MapOsmControlsInput controls_in;
   controls_in.panel = in.panel;
+  controls_in.language = in.language;
   controls_in.running_ui = in.running_ui;
   controls_in.can_undo = in.can_undo;
   controls_in.dji_on = in.nfz_enabled;
@@ -261,6 +267,7 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
   MapOsmControlsState controls_out;
   map_osm_draw_controls(p, controls_in, &controls_out);
   if (out) {
+    out->lang_btn_rect = controls_out.lang_btn_rect;
     out->back_btn_rect = controls_out.back_btn_rect;
     out->nfz_btn_rect = controls_out.nfz_btn_rect;
     out->dark_mode_btn_rect = controls_out.dark_mode_btn_rect;
@@ -272,13 +279,15 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
 
   QString status_txt = in.plan_status;
   QString cur_txt = map_osm_current_text(in.receiver_valid, in.receiver_lat_deg,
-                                         in.receiver_lon_deg);
+                                         in.receiver_lon_deg, in.language);
   QString llh_txt = map_osm_llh_text(in.has_selected_llh, in.selected_lat_deg,
-                                     in.selected_lon_deg, 0.0, cur_txt);
-  QString zoom_txt = map_osm_zoom_text(in.osm_zoom, in.osm_zoom_base);
+                                     in.selected_lon_deg, 0.0, cur_txt,
+                                     in.language);
+  QString zoom_txt = map_osm_zoom_text(in.osm_zoom, in.osm_zoom_base,
+                                       in.language);
   QStringList lines = map_osm_status_lines(zoom_txt, in.tutorial_enabled,
                                            in.tutorial_overlay_visible,
-                                           status_txt, llh_txt);
+                                           status_txt, llh_txt, in.language);
   map_osm_draw_status_badges(p, in.panel, controls_out.osm_stop_btn_rect,
                              in.running_ui, lines);
 }

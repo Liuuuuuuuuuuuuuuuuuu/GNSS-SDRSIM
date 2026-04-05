@@ -82,7 +82,9 @@ build/gui/control/control_paint.o: gui/control/control_paint.cpp \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
  gui/layout/control_layout.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QPainterPath \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainterpath.h
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainterpath.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QString \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h
 gui/control/control_paint.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QColor:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h:
@@ -167,3 +169,5 @@ gui/control/control_paint.h:
 gui/layout/control_layout.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QPainterPath:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainterpath.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QString:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:

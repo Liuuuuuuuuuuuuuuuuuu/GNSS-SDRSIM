@@ -26,7 +26,8 @@ build/gui/tutorial/tutorial_flow_utils.o: \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qarraydata.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringliteral.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringalgorithms.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringview.h
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringview.h \
+ gui/core/gui_i18n.h
 gui/tutorial/tutorial_flow_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QString:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
@@ -55,3 +56,4 @@ gui/tutorial/tutorial_flow_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringliteral.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringalgorithms.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringview.h:
+gui/core/gui_i18n.h:

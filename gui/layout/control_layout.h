@@ -12,6 +12,7 @@ struct Rect {
 
 struct ControlLayout {
     Rect panel;
+    Rect header_gear;
     Rect header_title;
     Rect header_utc;
     Rect header_bdt;

@@ -1,5 +1,7 @@
 #include "gui/map/map_osm_status_utils.h"
 
+#include "gui/core/gui_i18n.h"
+
 #include <QFont>
 #include <QFontMetrics>
 #include <QPen>
@@ -20,20 +22,21 @@ int clamp_int_local(int v, int lo, int hi) {
 } // namespace
 
 QString map_osm_current_text(bool receiver_valid, double receiver_lat,
-                             double receiver_lon) {
+                             double receiver_lon, GuiLanguage language) {
   if (receiver_valid) {
-    return QString("Current %1, %2")
+    return gui_i18n_text(language, "status.current")
         .arg(receiver_lat, 0, 'f', 6)
         .arg(receiver_lon, 0, 'f', 6);
   }
-  return "Current N/A";
+  return gui_i18n_text(language, "status.current_na");
 }
 
 QString map_osm_llh_text(bool has_selected_llh, double selected_lat,
                          double selected_lon, double selected_h,
-                         const QString &current_text) {
+                         const QString &current_text,
+                         GuiLanguage language) {
   if (has_selected_llh) {
-    return QString("Start LLH %1, %2, %3 | %4")
+    return gui_i18n_text(language, "status.start_llh")
         .arg(selected_lat, 0, 'f', 6)
         .arg(selected_lon, 0, 'f', 6)
         .arg(selected_h, 0, 'f', 1)
@@ -42,9 +45,9 @@ QString map_osm_llh_text(bool has_selected_llh, double selected_lat,
   return current_text;
 }
 
-QString map_osm_zoom_text(int zoom, int zoom_base) {
+QString map_osm_zoom_text(int zoom, int zoom_base, GuiLanguage language) {
   double zoom_factor = std::pow(2.0, (double)zoom - (double)zoom_base);
-  return QString("OpenStreetMap (drag to pan, wheel to zoom) | Zoom %1")
+  return gui_i18n_text(language, "status.zoom")
       .arg(zoom_factor, 0, 'f', zoom_factor >= 1.0 ? 1 : 2);
 }
 
@@ -52,11 +55,12 @@ QStringList map_osm_status_lines(const QString &zoom_text,
                                  bool tutorial_enabled,
                                  bool tutorial_overlay_visible,
                                  const QString &status_text,
-                                 const QString &llh_text) {
+                                 const QString &llh_text,
+                                 GuiLanguage language) {
   QStringList lines;
   lines << zoom_text;
   if (!tutorial_enabled && !tutorial_overlay_visible) {
-    lines << "New user tip: click GUIDE OFF at top-right to open step-by-step tutorial";
+    lines << gui_i18n_text(language, "status.new_user_tip");
   }
   if (!status_text.isEmpty()) {
     lines << status_text;

@@ -3,7 +3,9 @@
 
 #include <QPainter>
 #include <QPixmap>
+#include <QPoint>
 #include <QRect>
+#include <QString>
 
 #include <functional>
 #include <unordered_map>
@@ -11,19 +13,37 @@
 
 #include "gui/nfz/dji_nfz.h"
 #include "gui/geo/geo_io.h"
+#include "gui/core/gui_i18n.h"
 
 struct MapOsmPanelSegment {
   double start_lat_deg = 0.0;
   double start_lon_deg = 0.0;
   double end_lat_deg = 0.0;
   double end_lon_deg = 0.0;
-  int mode = 0;
-  int state = 0;
+  enum class PathMode : int { Plan = 0, Line = 1 };
+  enum class SegmentState : int { Queued = 0, Executing = 1 };
+  PathMode mode = PathMode::Plan;
+  SegmentState state = SegmentState::Queued;
   std::vector<LonLat> polyline;
 };
 
+inline constexpr MapOsmPanelSegment::PathMode
+map_osm_panel_path_mode_from_int(int mode) {
+  return (mode == static_cast<int>(MapOsmPanelSegment::PathMode::Line))
+             ? MapOsmPanelSegment::PathMode::Line
+             : MapOsmPanelSegment::PathMode::Plan;
+}
+
+inline constexpr MapOsmPanelSegment::SegmentState
+map_osm_panel_segment_state_from_int(int state) {
+  return (state == static_cast<int>(MapOsmPanelSegment::SegmentState::Executing))
+             ? MapOsmPanelSegment::SegmentState::Executing
+             : MapOsmPanelSegment::SegmentState::Queued;
+}
+
 struct MapOsmPanelInput {
   QRect panel;
+  GuiLanguage language = GuiLanguage::English;
   int osm_zoom = 0;
   int osm_zoom_base = 0;
   double osm_center_px_x = 0.0;
@@ -38,7 +58,8 @@ struct MapOsmPanelInput {
   double selected_lat_deg = 0.0;
   double selected_lon_deg = 0.0;
   bool has_preview_segment = false;
-  int preview_mode = 0;
+  MapOsmPanelSegment::PathMode preview_mode =
+      MapOsmPanelSegment::PathMode::Plan;
   double preview_start_lat_deg = 0.0;
   double preview_start_lon_deg = 0.0;
   double preview_end_lat_deg = 0.0;
@@ -61,6 +82,7 @@ struct MapOsmPanelInput {
 };
 
 struct MapOsmPanelState {
+  QRect lang_btn_rect;
   QRect back_btn_rect;
   QRect nfz_btn_rect;
   QRect dark_mode_btn_rect;

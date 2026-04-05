@@ -84,7 +84,7 @@ build/gui/map/map_osm_status_utils.o: gui/map/map_osm_status_utils.cpp \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont \
+ gui/core/gui_i18n.h /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
@@ -175,6 +175,7 @@ gui/map/map_osm_status_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h:
+gui/core/gui_i18n.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics:

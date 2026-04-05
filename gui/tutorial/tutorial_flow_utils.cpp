@@ -1,25 +1,10 @@
 #include "gui/tutorial/tutorial_flow_utils.h"
 
+#include "gui/core/gui_i18n.h"
+
 namespace {
 
-const char *kStepTitles[] = {
-    "Welcome",
-    "Step 1: Pick Start Point",
-    "Step 2: SIMPLE Tab",
-    "Step 3: SIMPLE Control Panel",
-    "Step 4: GNSS-SDRSIM (Top-Right)",
-    "Step 5: Switch to DETAIL",
-    "Step 6: DETAIL Control Panel",
-    "Step 7: More DETAIL Controls",
-    "Step 8: Start Transmission",
-    "Step 9: Spectrum Panel",
-    "Step 10: Waterfall Panel",
-    "Step 11: Time-Domain Panel",
-    "Step 12: Constellation Panel",
-    "Step 13: Stop and Reset",
-    "Step 14: Exit"};
-
-const int kStepCount = (int)(sizeof(kStepTitles) / sizeof(kStepTitles[0]));
+const int kStepCount = 15;
 
 int clamp_step(int step) {
   if (step < 0)
@@ -43,46 +28,48 @@ int tutorial_spotlight_count_for_step(int step) {
   return 0;
 }
 
-QString tutorial_step_title(int step) {
-  return QString::fromUtf8(kStepTitles[clamp_step(step)]);
+QString tutorial_step_title(int step, GuiLanguage language) {
+  return gui_i18n_text(language,
+                       QString("tutorial.step.title.%1").arg(clamp_step(step)).toUtf8().constData());
 }
 
-QString tutorial_step_body(int step, bool detailed, bool running_ui) {
+QString tutorial_step_body(int step, bool detailed, bool running_ui,
+                          GuiLanguage language) {
   switch (clamp_step(step)) {
   case 0:
-    return "Guide is optional and OFF by default.\nUse GUIDE OFF / GUIDE ON to show or hide this overlay.";
+    return gui_i18n_text(language, "tutorial.step.body.0");
   case 1:
-    return "Left map: left-click to set Start LLH.\nSTART becomes available after a valid start point.";
+    return gui_i18n_text(language, "tutorial.step.body.1");
   case 2:
-    return "SIMPLE tab: beginner page.\nUse this first for the fastest path to START.";
+    return gui_i18n_text(language, "tutorial.step.body.2");
   case 3:
-    return "SIMPLE controls: SYS, Fs, Tx Gain.\nHighlight shows each control in order.\nSYS and Fs must be compatible.";
+    return gui_i18n_text(language, "tutorial.step.body.3");
   case 4:
-    return "Top-right GNSS-SDRSIM panel: shows satellite geometry and receiver marker.";
+    return gui_i18n_text(language, "tutorial.step.body.4");
   case 5:
-    return "Switch to DETAIL tab for advanced controls.";
+    return gui_i18n_text(language, "tutorial.step.body.5");
   case 6:
-    return "DETAIL numeric controls: Gain, CN0, PRN, Seed, CH.\nHighlight cycles through them.";
+    return gui_i18n_text(language, "tutorial.step.body.6");
   case 7:
     return detailed
-               ? QString("DETAIL switches: MODE, FORMAT, MEO, IONO, EXT CLK.\nUse these for behavior and hardware options.")
-               : QString("Component: extra DETAIL controls.\nDETAIL gives you more operations than SIMPLE.\nExamples: CH, CN0, PRN, and Seed.");
+               ? gui_i18n_text(language, "tutorial.step.body.7.detail")
+               : gui_i18n_text(language, "tutorial.step.body.7.simple");
   case 8:
     return running_ui
-               ? QString("You are already running.\nCurrent component highlighted: STOP SIMULATION button.\nUse it to stop current transmission.")
-               : QString("Press START to begin generation/transmission.");
+               ? gui_i18n_text(language, "tutorial.step.body.8.running")
+               : gui_i18n_text(language, "tutorial.step.body.8.idle");
   case 9:
-    return "Spectrum panel: power over frequency.";
+    return gui_i18n_text(language, "tutorial.step.body.9");
   case 10:
-    return "Waterfall panel: frequency history over time.";
+    return gui_i18n_text(language, "tutorial.step.body.10");
   case 11:
-    return "Time-domain panel: waveform over time.";
+    return gui_i18n_text(language, "tutorial.step.body.11");
   case 12:
-    return "Constellation panel: I/Q distribution and stability.";
+    return gui_i18n_text(language, "tutorial.step.body.12");
   case 13:
-    return "Press STOP SIMULATION to abort run and return to standby.";
+    return gui_i18n_text(language, "tutorial.step.body.13");
   case 14:
   default:
-    return "Press EXIT to close the program.";
+    return gui_i18n_text(language, "tutorial.step.body.14");
   }
 }

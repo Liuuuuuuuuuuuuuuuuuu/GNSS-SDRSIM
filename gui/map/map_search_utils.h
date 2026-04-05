@@ -12,13 +12,24 @@ struct MapSearchResult {
   double lon = 0.0;
   QString line;
   QString display_name;
+  QString primary_text;
+  QString secondary_text;
+  double ranking_score = 0.0;
 };
 
 bool map_search_parse_coordinate_query(const QString &query, double *lat,
                                        double *lon);
-QUrl map_search_nominatim_url(const QString &query, int limit = 8);
+QUrl map_search_nominatim_url(const QString &query, int limit = 12,
+                              bool has_bias_center = false,
+                              double bias_lat = 0.0,
+                              double bias_lon = 0.0,
+                              double bias_box_deg = 1.2,
+                              const QString &language_tag = QString());
 std::vector<MapSearchResult>
-map_search_parse_nominatim_results(const QJsonArray &arr,
-                                   int max_results = 8);
+map_search_parse_nominatim_results(const QJsonArray &arr, const QString &query,
+                                   int max_results = 8,
+                                   bool has_bias_center = false,
+                                   double bias_lat = 0.0,
+                                   double bias_lon = 0.0);
 
 #endif

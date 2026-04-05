@@ -122,7 +122,9 @@ build/gui/map/map_search_ui_utils.o: gui/map/map_search_ui_utils.cpp \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qrubberband.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidgetItem \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QSignalBlocker \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qobject.h
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qobject.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QSize \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qsize.h
 gui/map/map_search_ui_utils.h:
 gui/map/map_search_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QJsonArray:
@@ -248,3 +250,5 @@ gui/map/map_search_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidgetItem:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QSignalBlocker:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qobject.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QSize:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qsize.h:

@@ -6,6 +6,13 @@
 
 #include "gui/layout/control_layout.h"
 
+void control_paint_set_text_scale(double scale);
+double control_paint_get_text_scale();
+void control_paint_set_detail_scales(double master_scale,
+                                     double caption_scale,
+                                     double switch_option_scale,
+                                     double value_scale);
+
 void control_draw_button(QPainter &p, const Rect &r, const QColor &border, const QColor &text, const char *label);
 void control_draw_button_filled(QPainter &p,
                                 const Rect &r,
@@ -31,6 +38,18 @@ void control_draw_slider(QPainter &p,
                          const char *value,
                          double ratio,
                          bool enabled);
+            void control_draw_slider_stacked(QPainter &p,
+                             const Rect &r,
+                             const QColor &border,
+                             const QColor &text,
+                             const QColor &dim,
+                             const QColor &accent,
+                             const char *name,
+                             const char *value,
+                             double ratio,
+                             bool enabled,
+                             bool show_fs_ticks,
+                             bool emphasize_caption);
 void control_draw_three_switch(QPainter &p,
                                const Rect &r,
                                const QColor &border,

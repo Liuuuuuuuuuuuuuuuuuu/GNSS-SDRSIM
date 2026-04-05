@@ -80,13 +80,13 @@ build/gui/tutorial/tutorial_overlay_utils.o: \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QRect \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h gui/core/gui_i18n.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QString \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h \
  gui/layout/control_layout.h gui/control/control_paint.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QColor \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h \
  gui/tutorial/tutorial_flow_utils.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/QString \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QRegularExpression \
@@ -174,13 +174,14 @@ gui/tutorial/tutorial_overlay_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QRect:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h:
+gui/core/gui_i18n.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QString:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
 gui/layout/control_layout.h:
 gui/control/control_paint.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QColor:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h:
 gui/tutorial/tutorial_flow_utils.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/QString:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QRegularExpression:

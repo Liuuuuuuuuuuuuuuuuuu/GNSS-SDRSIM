@@ -5,12 +5,14 @@
 #include <QPainter>
 
 #include "gui/core/control_state.h"
+#include "gui/core/gui_i18n.h"
 #include "gui/core/signal_snapshot.h"
 
 struct MapMonitorPanelsInput {
   GuiControlState ctrl;
   SpectrumSnapshot spec_snap;
   QImage waterfall_image;
+  GuiLanguage language = GuiLanguage::English;
 };
 
 void map_draw_spectrum_panel(QPainter &p, int win_width, int win_height,

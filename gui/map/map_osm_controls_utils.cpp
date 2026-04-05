@@ -2,6 +2,7 @@
 
 #include "gui/layout/control_layout.h"
 #include "gui/control/control_paint.h"
+#include "gui/core/gui_i18n.h"
 
 #include <QFontMetrics>
 #include <QPen>
@@ -22,6 +23,8 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
   if (!out)
     return;
 
+  out->lang_btn_rect = QRect();
+
   const QColor btn_border("#b9cadf");
   const QColor btn_text("#f8fbff");
   const QColor btn_dim("#6b7b90");
@@ -32,52 +35,70 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
   const QColor btn_back("#38bdf8");
   const QColor btn_return("#22c55e");
 
-  out->back_btn_rect =
-      QRect(in.panel.x() + in.panel.width() - 98, in.panel.y() + 44, 90, 26);
+  const int btn_w = 90;
+  const int btn_h = 26;
+  const int col_gap = 8;
+  const int row_gap = 8;
+  const int col_right_x = in.panel.x() + in.panel.width() - btn_w - 8;
+  const int col_left_x = col_right_x - col_gap - btn_w;
+  const int row0_y = in.panel.y() + 10;
+  const int row1_y = row0_y + btn_h + row_gap;
+  const int row2_y = row1_y + btn_h + row_gap;
+
+  out->lang_btn_rect = QRect(col_right_x, row0_y, btn_w, btn_h);
+  {
+    Rect rr = qrect_to_rect(out->lang_btn_rect);
+    control_draw_button(p, rr, btn_border, btn_text,
+                        gui_i18n_text(in.language, "osm.lang_btn").toUtf8().constData());
+  }
+
+  out->back_btn_rect = QRect(col_left_x, row1_y, btn_w, btn_h);
   if (in.running_ui) {
     Rect rr = qrect_to_rect(out->back_btn_rect);
     if (in.can_undo) {
       control_draw_button_filled(p, rr, btn_back, btn_back, QColor(8, 12, 18),
-                                 "BACK");
+                                 gui_i18n_text(in.language, "osm.back").toUtf8().constData());
     } else {
-      control_draw_button(p, rr, btn_dim, btn_dim, "BACK");
+      control_draw_button(p, rr, btn_dim, btn_dim,
+                          gui_i18n_text(in.language, "osm.back").toUtf8().constData());
     }
   }
 
-  out->nfz_btn_rect =
-      QRect(in.panel.x() + in.panel.width() - 192, in.panel.y() + 10, 90, 26);
+  out->nfz_btn_rect = QRect(col_left_x, row0_y, btn_w, btn_h);
   {
     Rect rr = qrect_to_rect(out->nfz_btn_rect);
     if (in.dji_on) {
       control_draw_button_filled(p, rr, btn_nfz, btn_nfz, QColor(8, 12, 18),
-                                 "NFZ ON");
+                                 gui_i18n_text(in.language, "osm.nfz_on").toUtf8().constData());
     } else {
-      control_draw_button(p, rr, btn_border, btn_text, "NFZ OFF");
+      control_draw_button(p, rr, btn_border, btn_text,
+                          gui_i18n_text(in.language, "osm.nfz_off").toUtf8().constData());
     }
   }
 
-  out->dark_mode_btn_rect =
-      QRect(in.panel.x() + in.panel.width() - 98, in.panel.y() + 10, 90, 26);
+  out->dark_mode_btn_rect = QRect(col_right_x, row1_y, btn_w, btn_h);
   {
     Rect rr = qrect_to_rect(out->dark_mode_btn_rect);
     if (in.dark_map_mode) {
       control_draw_button_filled(p, rr, btn_dark, btn_dark, QColor(8, 12, 18),
-                                 "LIGHT");
+                                 gui_i18n_text(in.language, "osm.light").toUtf8().constData());
     } else {
-      control_draw_button(p, rr, btn_border, btn_text, "DARK");
+      control_draw_button(p, rr, btn_border, btn_text,
+                          gui_i18n_text(in.language, "osm.dark").toUtf8().constData());
     }
   }
 
   out->tutorial_toggle_rect = QRect();
   if (!in.running_ui) {
-    out->tutorial_toggle_rect =
-        QRect(in.panel.x() + in.panel.width() - 286, in.panel.y() + 10, 90, 26);
+    out->tutorial_toggle_rect = QRect(col_right_x, row2_y, btn_w, btn_h);
     Rect rr = qrect_to_rect(out->tutorial_toggle_rect);
     if (in.tutorial_enabled) {
       control_draw_button_filled(p, rr, btn_tutorial, btn_tutorial,
-                                 QColor(8, 12, 18), "GUIDE ON");
+                                 QColor(8, 12, 18),
+                                 gui_i18n_text(in.language, "osm.guide_on").toUtf8().constData());
     } else {
-      control_draw_button(p, rr, btn_border, btn_text, "GUIDE OFF");
+      control_draw_button(p, rr, btn_border, btn_text,
+                          gui_i18n_text(in.language, "osm.guide_off").toUtf8().constData());
     }
   }
 
@@ -94,14 +115,15 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
     out->search_return_btn_rect = QRect(btn_x, btn_y, btn_w, btn_h);
     Rect rr = qrect_to_rect(out->search_return_btn_rect);
     control_draw_button_filled(p, rr, btn_return, btn_return, QColor(8, 12, 18),
-                               "RETURN");
+                               gui_i18n_text(in.language, "osm.return").toUtf8().constData());
   }
 
   const bool show_tutorial_stop_preview =
       in.tutorial_overlay_visible && (in.tutorial_step == 13) && !in.running_ui;
   if (in.running_ui || show_tutorial_stop_preview) {
     QFontMetrics stop_fm(p.font());
-    const char *kStopBtnLabel = "STOP";
+    QByteArray stop_label = gui_i18n_text(in.language, "osm.stop").toUtf8();
+    const char *kStopBtnLabel = stop_label.constData();
     int stop_w = std::max(160, stop_fm.horizontalAdvance(kStopBtnLabel) + 48);
     stop_w = std::min(stop_w, in.panel.width() - 24);
     int stop_h = 46;
@@ -110,12 +132,8 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
         QRect(in.panel.x() + (in.panel.width() - stop_w) / 2, stop_y, stop_w, stop_h);
 
     Rect rr = qrect_to_rect(out->osm_stop_btn_rect);
-    if (in.running_ui) {
-      control_draw_button_filled(p, rr, btn_stop, btn_stop, QColor(8, 12, 18),
-                                 kStopBtnLabel);
-    } else {
-      control_draw_button(p, rr, btn_border, btn_text, kStopBtnLabel);
-    }
+    control_draw_button_filled(p, rr, btn_stop, btn_stop, QColor(8, 12, 18),
+                               kStopBtnLabel);
 
     if (in.running_ui) {
       int hh = (int)(in.elapsed_sec / 3600);
@@ -124,7 +142,8 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
 
       QString run_txt =
           QString("%1 - %2:%3:%4")
-              .arg(in.tx_active ? "RUN TIME" : "INIT TIME")
+            .arg(gui_i18n_text(in.language,
+                     in.tx_active ? "osm.run_time" : "osm.init_time"))
               .arg(hh, 2, 10, QChar('0'))
               .arg(mm, 2, 10, QChar('0'))
               .arg(ss, 2, 10, QChar('0'));
@@ -137,7 +156,13 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
       time_font.setLetterSpacing(QFont::PercentageSpacing, 110);
       p.setFont(time_font);
 
-      int txt_w = p.fontMetrics().horizontalAdvance(run_txt);
+        const QString init_txt =
+          QString("%1 - 00:00:00").arg(gui_i18n_text(in.language, "osm.init_time"));
+        const QString run_txt_sample =
+          QString("%1 - 00:00:00").arg(gui_i18n_text(in.language, "osm.run_time"));
+        int txt_w = p.fontMetrics().horizontalAdvance(run_txt);
+        txt_w = std::max(txt_w, p.fontMetrics().horizontalAdvance(init_txt));
+        txt_w = std::max(txt_w, p.fontMetrics().horizontalAdvance(run_txt_sample));
       int txt_h = p.fontMetrics().height();
       QRect time_rect(in.panel.x() + (in.panel.width() - txt_w) / 2 - 20,
                       stop_y - txt_h - 50, txt_w + 40, txt_h + 20);
@@ -178,13 +203,15 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
     p.setBrush(QColor(255, 0, 255, 80));
     p.drawEllipse(leg_x + 10, leg_y + 14, 10, 10);
     p.setPen(QColor("#f1f7ff"));
-    p.drawText(leg_x + 28, leg_y + 24, "Restricted");
+    p.drawText(leg_x + 28, leg_y + 24,
+           gui_i18n_text(in.language, "osm.legend_restricted"));
 
     p.setPen(QPen(QColor(59, 130, 246, 240), 2));
     p.setBrush(QColor(59, 130, 246, 60));
     p.drawEllipse(leg_x + 10, leg_y + 34, 10, 10);
     p.setPen(QColor("#f1f7ff"));
-    p.drawText(leg_x + 28, leg_y + 44, "Auth/Warn");
+    p.drawText(leg_x + 28, leg_y + 44,
+           gui_i18n_text(in.language, "osm.legend_auth_warn"));
 
     p.setFont(old_font);
     p.setRenderHint(QPainter::Antialiasing, false);

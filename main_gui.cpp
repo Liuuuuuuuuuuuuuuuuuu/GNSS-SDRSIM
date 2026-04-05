@@ -10,6 +10,8 @@
 #include "gui/map/map_hover_utils.h"
 #include "gui/layout/map_control_panel_utils.h"
 #include "gui/layout/map_monitor_panels_utils.h"
+#include "gui/core/gui_i18n.h"
+#include "gui/core/gui_language_runtime_utils.h"
 #include "gui/map/map_osm_interaction_utils.h"
 #include "gui/map/map_osm_panel_utils.h"
 #include "gui/map/map_render_utils.h"
@@ -29,32 +31,43 @@
 #include "gui/tutorial/tutorial_flow_utils.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QCloseEvent>
+#include <QColorDialog>
 #include <QCursor>
+#include <QDialog>
+#include <QDialogButtonBox>
 #include <QFont>
+#include <QFormLayout>
+#include <QHBoxLayout>
 #include <QImage>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QLabel>
 #include <QLineEdit>
 #include <QLinearGradient>
+#include <QListWidget>
+#include <QListWidgetItem>
 #include <QMouseEvent>
-#include <QPaintEvent>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
+#include <QPaintEvent>
 #include <QPainter>
 #include <QPen>
-#include <QListWidget>
-#include <QListWidgetItem>
-#include <QShortcut>
+#include <QPushButton>
 #include <QRect>
 #include <QScreen>
+#include <QShortcut>
+#include <QSlider>
+#include <QSpinBox>
 #include <QThread>
-#include <QWindow>
 #include <QTimer>
 #include <QWheelEvent>
+#include <QWindow>
 #include <QWidget>
+#include <QVBoxLayout>
 
 #include <algorithm>
 #include <atomic>
@@ -117,13 +130,17 @@ public:
       }
     };
 
-    auto *fullscreen_shortcut = new QShortcut(QKeySequence(Qt::Key_F11), this);
+    auto *fullscreen_shortcut =
+        new QShortcut(QKeySequence(Qt::Key_F11), this);
     fullscreen_shortcut->setContext(Qt::ApplicationShortcut);
-    connect(fullscreen_shortcut, &QShortcut::activated, this, toggle_fullscreen);
+    connect(fullscreen_shortcut, &QShortcut::activated, this,
+            toggle_fullscreen);
 
-    auto *exit_fullscreen_shortcut = new QShortcut(QKeySequence(Qt::Key_Escape), this);
+    auto *exit_fullscreen_shortcut =
+        new QShortcut(QKeySequence(Qt::Key_Escape), this);
     exit_fullscreen_shortcut->setContext(Qt::ApplicationShortcut);
-    connect(exit_fullscreen_shortcut, &QShortcut::activated, this, exit_fullscreen);
+    connect(exit_fullscreen_shortcut, &QShortcut::activated, this,
+            exit_fullscreen);
 
     shp_ok_ = load_land_shapefile("./ne_50m_land/ne_50m_land.shp", shp_parts_);
     build_time_info(&time_info_);
@@ -171,7 +188,7 @@ public:
     // --- 新增：初始化 DJI NFZ 管理器 ---
     dji_nfz_mgr_ = new DjiNfzManager(this, [this]() {
       this->osm_bg_needs_redraw_ = true;
-      this->update(this->osm_panel_rect_); // 資料更新時重繪地圖
+      this->update(this->osm_panel_rect_);
     });
 
     // ======== 新增這兩行來預設開啟 NFZ ========
@@ -186,7 +203,7 @@ public:
     // =========================================================
     search_box_ = new QLineEdit(this);
     search_box_->setAttribute(Qt::WA_InputMethodEnabled, true);
-    search_box_->setPlaceholderText("Search a location and press Enter");
+    gui_runtime_apply_search_placeholder(search_box_, ui_language_);
     search_box_->setGeometry(10, 10, 240, 30);
     search_box_->setStyleSheet(
         "background-color: rgba(255, 255, 255, 240); color: black; border: 1px "
@@ -195,8 +212,10 @@ public:
 
     search_results_list_ = new QListWidget(this);
     search_results_list_->setVisible(false);
-    search_results_list_->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    search_results_list_->setHorizontalScrollBarPolicy(
+        Qt::ScrollBarAlwaysOff);
     search_results_list_->setSelectionMode(QAbstractItemView::SingleSelection);
+    search_results_list_->setWordWrap(true);
     search_results_list_->setGeometry(10, 46, 360, 220);
     search_results_list_->setStyleSheet(
         "QListWidget {"
@@ -216,6 +235,13 @@ public:
         " color: #0f172a;"
         "}");
 
+      alert_overlay_ = new QLabel(this);
+      alert_overlay_->hide();
+      alert_overlay_->setWordWrap(true);
+      alert_overlay_->setAlignment(Qt::AlignCenter);
+      alert_overlay_->setAttribute(Qt::WA_TransparentForMouseEvents, true);
+      alert_overlay_->setFocusPolicy(Qt::NoFocus);
+
     connect(search_results_list_, &QListWidget::itemClicked, this,
             [this](QListWidgetItem *item) {
               if (!item) return;
@@ -230,6 +256,19 @@ public:
 
     search_net_ = new QNetworkAccessManager(this);
     geo_net_ = new QNetworkAccessManager(this);
+    search_suggest_timer_ = new QTimer(this);
+    search_suggest_timer_->setSingleShot(true);
+    search_suggest_timer_->setInterval(280);
+    connect(search_suggest_timer_, &QTimer::timeout, this, [this]() {
+      if (is_jam_map_locked())
+        return;
+      const QString query = pending_search_query_.trimmed();
+      if (query.isEmpty())
+        return;
+      if (search_box_ && search_box_->text().trimmed() != query)
+        return;
+      issue_place_search(query, true);
+    });
 
     {
       QNetworkRequest req(QUrl("https://ipapi.co/json/"));
@@ -320,19 +359,23 @@ public:
         pre_search_center_y_ = osm_center_px_y_;
         pre_search_zoom_ = osm_zoom_;
       }
-
-      QUrl url = map_search_nominatim_url(query, 8);
-
-      QNetworkRequest req(url);
-      req.setRawHeader("User-Agent", "bds-sim-map-gui/1.0");
-      ++search_seq_counter_;
-      latest_search_seq_ = search_seq_counter_;
-      QNetworkReply *reply = search_net_->get(req);
-      reply->setProperty("search_seq", latest_search_seq_);
+      issue_place_search(query, false);
     });
 
     connect(search_box_, &QLineEdit::textEdited, this,
-            [this](const QString &) { hide_search_results(); });
+            [this](const QString &text) {
+              if (is_jam_map_locked()) {
+                hide_search_results();
+                return;
+              }
+              pending_search_query_ = text;
+              if (text.trimmed().isEmpty()) {
+                hide_search_results();
+                return;
+              }
+              if (search_suggest_timer_)
+                search_suggest_timer_->start();
+            });
 
     connect(search_net_, &QNetworkAccessManager::finished, this,
             [this](QNetworkReply *reply) {
@@ -342,13 +385,24 @@ public:
                 return;
               }
 
-              search_box_->setFocus();
+              const bool from_suggest = reply->property("search_suggest").toBool();
+              const QString query = reply->property("search_query").toString();
+              if (from_suggest && search_box_ &&
+                  search_box_->text().trimmed() != query.trimmed()) {
+                reply->deleteLater();
+                return;
+              }
+
               if (reply->error() == QNetworkReply::NoError) {
                 const QByteArray body = reply->readAll();
                 const QJsonDocument doc = QJsonDocument::fromJson(body);
                 if (doc.isArray()) {
-                  show_search_results(doc.array());
+                  show_search_results(doc.array(), query, from_suggest);
                 }
+              }
+
+              if (!from_suggest && search_box_) {
+                search_box_->setFocus();
               }
               reply->deleteLater();
             });
@@ -477,12 +531,15 @@ protected:
       draw_tutorial_overlay(p, win_width, win_height);
     }
     draw_hover_help_overlay(p, win_width, win_height);
-    draw_alert_banner(p, win_width, win_height);
   }
 
   void resizeEvent(QResizeEvent *event) override {
     QWidget::resizeEvent(event);
     layout_overlay_widgets(width(), height());
+    if (alert_overlay_) {
+      alert_overlay_->setGeometry(rect());
+    }
+    update_alert_overlay();
     map_panel_bootstrap_redraw_done_ = false;
     update(QRect(width() / 2, 0, width() - width() / 2, height() / 2));
   }
@@ -497,6 +554,7 @@ protected:
     }
 
     if (event->button() == Qt::LeftButton) {
+      const bool tutorial_was_visible = tutorial_overlay_visible_;
       if (tutorial_handle_click(event->pos(), running_ui, tutorial_last_step(),
                                 tutorial_toggle_rect_, tutorial_prev_btn_rect_,
                                 tutorial_next_btn_rect_, tutorial_close_btn_rect_,
@@ -506,6 +564,13 @@ protected:
                                 &tutorial_text_page_count_,
                                 &tutorial_text_page_anchor_step_,
                                 &tutorial_text_page_anchor_spotlight_)) {
+        if (!tutorial_was_visible && tutorial_overlay_visible_) {
+          wf_.image = QImage();
+          wf_.width = 0;
+          wf_.height = 0;
+          g_gui_reset_waterfall_req.fetch_add(1);
+          update(right_bottom_region());
+        }
         update();
         event->accept();
         return;
@@ -523,6 +588,22 @@ protected:
                                              event->pos())) {
           hide_search_results();
         }
+      }
+
+      if (lang_btn_rect_.contains(event->pos())) {
+        ui_language_ = gui_runtime_toggle_language(ui_language_);
+        gui_runtime_apply_search_placeholder(search_box_, ui_language_);
+        gui_runtime_apply_language_font(this, ui_language_);
+        update_alert_overlay();
+        update();
+        event->accept();
+        return;
+      }
+
+      if (control_gear_btn_rect_.contains(event->pos())) {
+        open_control_style_dialog();
+        event->accept();
+        return;
       }
 
       int value_field = control_value_hit_test(
@@ -729,6 +810,14 @@ protected:
 
   void wheelEvent(QWheelEvent *event) override {
     QPoint p0 = event->position().toPoint();
+
+    // Keep wheel scrolling inside search results from leaking into map zoom.
+    if (search_results_list_ && search_results_list_->isVisible() &&
+        search_results_list_->geometry().contains(p0)) {
+      QWidget::wheelEvent(event);
+      return;
+    }
+
     int delta = event->angleDelta().y();
     if (map_osm_handle_wheel(
             p0, delta, osm_panel_rect_, is_jam_map_locked(), &osm_zoom_,
@@ -761,321 +850,30 @@ protected:
     QWidget::closeEvent(event);
   }
 
-  void begin_inline_edit(int field_id) {
-    if (!inline_editor_)
-      return;
-
-    char val[64] = {0};
-    if (!control_value_text_for_field(field_id, val, sizeof(val)))
-      return;
-
-    bool detailed = false;
-    {
-        std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-        detailed = g_ctrl.show_detailed_ctrl;
-    }
-
-    ControlLayout lo;
-    compute_control_layout(width(), height(), &lo, detailed);
-
-    Rect sr = lo.tx_slider;
-    switch (field_id) {
-    case CTRL_SLIDER_TX:
-      sr = lo.tx_slider;
-      break;
-    case CTRL_SLIDER_GAIN:
-      sr = lo.gain_slider;
-      break;
-    case CTRL_SLIDER_FS:
-      sr = lo.fs_slider;
-      break;
-    case CTRL_SLIDER_CN0:
-      sr = lo.cn0_slider;
-      break;
-    case CTRL_SLIDER_SEED:
-      sr = lo.seed_slider;
-      break;
-    case CTRL_SLIDER_PRN:
-      sr = lo.prn_slider;
-      break;
-    case CTRL_SLIDER_PATH_V:
-      sr = lo.path_v_slider;
-      break;
-    case CTRL_SLIDER_PATH_A:
-      sr = lo.path_a_slider;
-      break;
-    case CTRL_SLIDER_CH:
-      sr = lo.ch_slider;
-      break;
-    default:
-      return;
-    }
-
-    Rect vr = slider_value_rect(sr);
-    inline_edit_field_ = field_id;
-    inline_editor_->setGeometry(vr.x, vr.y, vr.w, vr.h);
-    inline_editor_->setText(QString::fromUtf8(val));
-    inline_editor_->show();
-    inline_editor_->raise();
-    inline_editor_->setFocus();
-    inline_editor_->selectAll();
-  }
-
-  void commit_inline_edit(bool apply) {
-    if (!inline_editor_ || inline_edit_field_ < 0)
-      return;
-
-    int field = inline_edit_field_;
-    inline_edit_field_ = -1;
-
-    bool changed = false;
-    if (apply) {
-      QByteArray ba = inline_editor_->text().trimmed().toUtf8();
-      changed = handle_control_value_input(field, ba.constData());
-    }
-
-    inline_editor_->hide();
-    if (changed)
-      update(osm_panel_rect_);
-    if (changed)
-      update(right_bottom_region());
-  }
-
-  void clear_hover_help() {
-    if (hover_help_visible_ || hover_region_id_ >= 0) {
-      QRect dirty = hover_help_invalid_rect(hover_help_anchor_rect_);
-      hover_help_visible_ = false;
-      hover_help_text_.clear();
-      hover_region_id_ = -1;
-      if (!dirty.isEmpty())
-        update(dirty);
-    }
-  }
-
-  int hover_region_for_pos(const QPoint &pos, QString *text, QRect *anchor) const {
-    MapHoverHelpInput in;
-    in.win_width = width();
-    in.win_height = height();
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      in.ctrl = g_ctrl;
-    }
-    in.dark_map_mode = dark_map_mode_;
-    in.show_search_return = show_search_return_;
-    in.search_box_visible = search_box_ && search_box_->isVisible();
-    return map_hover_region_for_pos(pos, in, text, anchor);
-  }
-
-  void update_hover_help(const QPoint &pos) {
-    QString text;
-    QRect anchor;
-    const int region_id = hover_region_for_pos(pos, &text, &anchor);
-    const bool visible = region_id >= 0;
-
-    if (region_id == hover_region_id_ && visible == hover_help_visible_ &&
-        text == hover_help_text_ && anchor == hover_help_anchor_rect_) {
-      return;
-    }
-
-    hover_region_id_ = region_id;
-    hover_help_visible_ = visible;
-    hover_help_text_ = text;
-    QRect old_anchor = hover_help_anchor_rect_;
-    hover_help_anchor_rect_ = anchor;
-    if (visible) {
-      hover_enter_tp_ = std::chrono::steady_clock::now();
-    }
-    QRect dirty = hover_help_invalid_rect(anchor);
-    if (!old_anchor.isEmpty())
-      dirty = dirty.united(hover_help_invalid_rect(old_anchor));
-    if (!dirty.isEmpty())
-      update(dirty);
-  }
-
-  void draw_hover_help_overlay(QPainter &p, int win_width, int win_height) {
-    MapHoverHelpInput in;
-    in.win_width = win_width;
-    in.win_height = win_height;
-    in.tutorial_overlay_visible = tutorial_overlay_visible_;
-    in.dark_map_mode = dark_map_mode_;
-    in.show_search_return = show_search_return_;
-    in.search_box_visible = search_box_ && search_box_->isVisible();
-    in.search_box_rect = search_box_ ? search_box_->geometry() : QRect();
-    in.search_return_btn_rect = search_return_btn_rect_;
-    in.dark_mode_btn_rect = dark_mode_btn_rect_;
-    in.nfz_btn_rect = nfz_btn_rect_;
-    in.tutorial_toggle_rect = tutorial_toggle_rect_;
-    in.back_btn_rect = back_btn_rect_;
-    in.osm_stop_btn_rect = osm_stop_btn_rect_;
-    in.osm_runtime_rect = osm_runtime_rect_;
-    in.osm_panel_rect = osm_panel_rect_;
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      in.ctrl = g_ctrl;
-    }
-    in.nfz_on = dji_nfz_mgr_ && dji_nfz_mgr_->is_enabled();
-    map_draw_hover_help_overlay(p, in, hover_help_visible_, hover_help_text_,
-                                hover_help_anchor_rect_);
-  }
-
-  void draw_alert_banner(QPainter &p, int win_width, int /*win_height*/) {
-    std::string text;
-    int level = 0;
-    std::chrono::steady_clock::time_point expire_tp;
-    {
-      std::lock_guard<std::mutex> lk(g_gui_alert_mtx);
-      text = g_gui_alert_text;
-      level = g_gui_alert_level;
-      expire_tp = g_gui_alert_expire_tp;
-    }
-    if (text.empty() || std::chrono::steady_clock::now() > expire_tp) {
-      return;
-    }
-
-    QColor fill("#0f172a");
-    QColor border("#64748b");
-    QColor text_color("#e2e8f0");
-    if (level == 1) {
-      fill = QColor("#3f2f08");
-      border = QColor("#f59e0b");
-      text_color = QColor("#fef3c7");
-    } else if (level == 2) {
-      fill = QColor("#4c1d1d");
-      border = QColor("#ef4444");
-      text_color = QColor("#fee2e2");
-    }
-
-    QFont old_font = p.font();
-    QFont font = old_font;
-    font.setFamily("Noto Sans");
-    font.setBold(true);
-    font.setPointSize(std::max(10, std::min(13, win_width / 120)));
-    p.setFont(font);
-
-    const QString banner_text = QString::fromStdString(text);
-    const int pad_x = 14;
-    const int pad_y = 8;
-    const int max_w = std::min(760, win_width - 24);
-    QRect bounds = p.fontMetrics().boundingRect(
-        QRect(0, 0, max_w - pad_x * 2, 200), Qt::TextWordWrap, banner_text);
-    QRect banner((win_width - std::min(max_w, bounds.width() + pad_x * 2)) / 2,
-                 12,
-                 std::min(max_w, bounds.width() + pad_x * 2),
-                 bounds.height() + pad_y * 2);
-
-    p.setRenderHint(QPainter::Antialiasing, true);
-    p.setPen(QPen(border, 1));
-    p.setBrush(fill);
-    p.drawRoundedRect(banner, 10, 10);
-    p.setPen(text_color);
-    p.drawText(banner.adjusted(pad_x, pad_y, -pad_x, -pad_y),
-               Qt::AlignCenter | Qt::TextWordWrap, banner_text);
-    p.setFont(old_font);
-    p.setRenderHint(QPainter::Antialiasing, false);
-  }
+  void begin_inline_edit(int field_id);
+  void commit_inline_edit(bool apply);
+  void clear_hover_help();
+  int hover_region_for_pos(const QPoint &pos, QString *text,
+                           QRect *anchor) const;
+  void update_hover_help(const QPoint &pos);
+  void draw_hover_help_overlay(QPainter &p, int win_width, int win_height);
+  bool current_alert(QString *out_text, int *out_level) const;
+  void update_alert_overlay();
 
 private:
-  void update_overlay_widget_visibility() {
-    if (!search_box_) return;
-
-    bool should_show_search =
-        map_overlay_should_show_search(tutorial_overlay_visible_);
-    const bool jam_locked = is_jam_map_locked();
-
-    if (search_box_->isVisible() != should_show_search) {
-      search_box_->setVisible(should_show_search);
-      if (!should_show_search) {
-        search_box_->clearFocus();
-        hide_search_results();
-      }
-    }
-
-    const bool search_enabled =
-      map_overlay_search_enabled(should_show_search, jam_locked);
-    if (search_box_->isEnabled() != search_enabled) {
-      search_box_->setEnabled(search_enabled);
-      if (!search_enabled) {
-        search_box_->clearFocus();
-        hide_search_results();
-      }
-    }
-
-    if (search_results_list_ && search_results_list_->isVisible() &&
-        (!should_show_search || jam_locked)) {
-      search_results_list_->setVisible(false);
-    }
+  QString tr_text(const char *key) const {
+    return gui_runtime_text(ui_language_, key);
   }
 
-  void layout_overlay_widgets(int win_width, int win_height) {
-    if (!search_box_)
-      return;
-
-    const MapSearchOverlayLayout lo =
-        map_overlay_search_layout(win_width, win_height);
-    search_box_->setGeometry(lo.search_box_rect);
-    if (search_results_list_) {
-      search_results_list_->setGeometry(lo.results_list_rect);
-    }
-  }
-
-  void hide_search_results() {
-    map_search_hide_results(search_results_list_);
-  }
-
-  void show_search_results(const QJsonArray &arr) {
-    if (!search_results_list_) return;
-
-    const std::vector<MapSearchResult> parsed =
-      map_search_parse_nominatim_results(arr, 8);
-    const int item_count =
-        map_search_populate_results(search_results_list_, parsed);
-
-    if (item_count <= 0) {
-      map_gui_push_alert(1, "No place matched your search text.");
-      return;
-    }
-
-    search_results_list_->setCurrentRow(0);
-    search_results_list_->setVisible(true);
-    search_results_list_->raise();
-    update(osm_panel_rect_);
-  }
-
-  QRect right_bottom_region() const {
-    return QRect(width() / 2, height() / 2, width() - width() / 2,
-                 height() - height() / 2);
-  }
-
-  QRect hover_help_invalid_rect(const QRect &anchor) const {
-    if (anchor.isEmpty())
-      return QRect();
-    return anchor.adjusted(-320, -190, 320, 190).intersected(rect());
-  }
-
-  void apply_search_result_selection(QListWidgetItem *item) {
-    if (!item) return;
-
-    bool ok_lat = false;
-    bool ok_lon = false;
-    const double lat = item->data(Qt::UserRole).toDouble(&ok_lat);
-    const double lon = item->data(Qt::UserRole + 1).toDouble(&ok_lon);
-    if (!ok_lat || !ok_lon) return;
-
-    if (!show_search_return_) {
-      pre_search_center_x_ = osm_center_px_x_;
-      pre_search_center_y_ = osm_center_px_y_;
-      pre_search_zoom_ = osm_zoom_;
-    }
-
-    osm_zoom_ = 17;
-    show_search_return_ = true;
-    user_map_interacted_ = true;
-    set_selected_llh_direct(lat, lon);
-    hide_search_results();
-    notify_nfz_viewport_changed();
-    update(osm_panel_rect_);
-    if (search_box_) search_box_->clearFocus();
-  }
+  void update_overlay_widget_visibility();
+  void layout_overlay_widgets(int win_width, int win_height);
+  void hide_search_results();
+  void show_search_results(const QJsonArray &arr, const QString &query,
+                           bool from_suggest);
+  QRect right_bottom_region() const;
+  QRect hover_help_invalid_rect(const QRect &anchor) const;
+  void apply_search_result_selection(QListWidgetItem *item);
+  void issue_place_search(const QString &query, bool from_suggest);
 
   void request_visible_tiles() {
     if (QThread::currentThread() != this->thread()) {
@@ -1197,142 +995,23 @@ private:
                             QPoint *out) const;
   void draw_osm_panel(QPainter &p, const QRect &panel);
 
-  void draw_tutorial_overlay(QPainter &p, int win_width, int win_height) {
-    bool running_ui = false;
-    bool detailed = false;
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      running_ui = g_ctrl.running_ui;
-      detailed = g_ctrl.show_detailed_ctrl;
-    }
-
-    TutorialOverlayInput overlay_in;
-    overlay_in.win_width = win_width;
-    overlay_in.win_height = win_height;
-    overlay_in.overlay_visible = tutorial_overlay_visible_;
-    overlay_in.running_ui = running_ui;
-    overlay_in.detailed = detailed;
-    overlay_in.step = tutorial_step_;
-    overlay_in.osm_panel_rect = osm_panel_rect_;
-    overlay_in.osm_stop_btn_rect = osm_stop_btn_rect_;
-    overlay_in.last_step = tutorial_last_step();
-
-    TutorialOverlayState overlay_state;
-    overlay_state.prev_btn_rect = tutorial_prev_btn_rect_;
-    overlay_state.next_btn_rect = tutorial_next_btn_rect_;
-    overlay_state.close_btn_rect = tutorial_close_btn_rect_;
-    overlay_state.anim_step_anchor = tutorial_anim_step_anchor_;
-    overlay_state.anim_start_tp = tutorial_anim_start_tp_;
-    overlay_state.spotlight_index = tutorial_spotlight_index_;
-    overlay_state.text_page = tutorial_text_page_;
-    overlay_state.text_page_count = tutorial_text_page_count_;
-    overlay_state.text_page_anchor_step = tutorial_text_page_anchor_step_;
-    overlay_state.text_page_anchor_spotlight = tutorial_text_page_anchor_spotlight_;
-
-    tutorial_draw_overlay(p, overlay_in, &overlay_state);
-
-    tutorial_prev_btn_rect_ = overlay_state.prev_btn_rect;
-    tutorial_next_btn_rect_ = overlay_state.next_btn_rect;
-    tutorial_close_btn_rect_ = overlay_state.close_btn_rect;
-    tutorial_anim_step_anchor_ = overlay_state.anim_step_anchor;
-    tutorial_anim_start_tp_ = overlay_state.anim_start_tp;
-    tutorial_spotlight_index_ = overlay_state.spotlight_index;
-    tutorial_text_page_ = overlay_state.text_page;
-    tutorial_text_page_count_ = overlay_state.text_page_count;
-    tutorial_text_page_anchor_step_ = overlay_state.text_page_anchor_step;
-    tutorial_text_page_anchor_spotlight_ = overlay_state.text_page_anchor_spotlight;
-  }
+  void draw_tutorial_overlay(QPainter &p, int win_width, int win_height);
 
 
 
   void onTick();
 
-  void refresh_tick_timer() {
-    if (!timer_)
-      return;
-
-    int interval_ms = 100;
-    if (!isVisible() || isMinimized()) {
-      interval_ms = 500;
-    } else {
-      bool running_ui = false;
-      {
-        std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-        running_ui = g_ctrl.running_ui;
-      }
-
-      if (tutorial_overlay_visible_) {
-        interval_ms = 40;
-      } else if (running_ui) {
-        interval_ms = 60;
-      }
-    }
-
-    if (!timer_->isActive() || timer_->interval() != interval_ms) {
-      timer_->start(interval_ms);
-    }
-  }
+  void refresh_tick_timer();
 
   void draw_map_panel(QPainter &p, const QRect &map_rect);
 
-  void draw_control_panel(QPainter &p, int win_width, int win_height) {
-    MapControlPanelInput in;
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      in.ctrl = g_ctrl;
-    }
-    in.time_info = time_info_;
-    QString rnx_raw = in.ctrl.rinex_name[0] ? QString::fromUtf8(in.ctrl.rinex_name) : QString("N/A");
-    int slash_pos = std::max(rnx_raw.lastIndexOf('/'), rnx_raw.lastIndexOf('\\'));
-    in.rnx_name = (slash_pos >= 0) ? rnx_raw.mid(slash_pos + 1) : rnx_raw;
-    map_draw_control_panel(p, win_width, win_height, in);
-  }
-  
-  void draw_spectrum_panel(QPainter &p, int win_width, int win_height) {
-    MapMonitorPanelsInput in;
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      in.ctrl = g_ctrl;
-    }
-    in.spec_snap = spec_snap_;
-    map_draw_spectrum_panel(p, win_width, win_height, in);
-  }
-
-  void update_waterfall_image() {
-    map_update_waterfall_image(width(), height(), spec_snap_, &wf_.image,
-                               &wf_.width, &wf_.height);
-  }
-
-  void draw_waterfall_panel(QPainter &p, int win_width, int win_height) {
-    MapMonitorPanelsInput in;
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      in.ctrl = g_ctrl;
-    }
-    in.waterfall_image = wf_.image;
-    in.spec_snap = spec_snap_;
-    map_draw_waterfall_panel(p, win_width, win_height, in);
-  }
-
-  void draw_time_panel(QPainter &p, int win_width, int win_height) {
-    MapMonitorPanelsInput in;
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      in.ctrl = g_ctrl;
-    }
-    in.spec_snap = spec_snap_;
-    map_draw_time_panel(p, win_width, win_height, in);
-  }
-
-  void draw_constellation_panel(QPainter &p, int win_width, int win_height) {
-    MapMonitorPanelsInput in;
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      in.ctrl = g_ctrl;
-    }
-    in.spec_snap = spec_snap_;
-    map_draw_constellation_panel(p, win_width, win_height, in);
-  }
+  void draw_control_panel(QPainter &p, int win_width, int win_height);
+  void open_control_style_dialog();
+  void update_waterfall_image();
+  void draw_spectrum_panel(QPainter &p, int win_width, int win_height);
+  void draw_waterfall_panel(QPainter &p, int win_width, int win_height);
+  void draw_time_panel(QPainter &p, int win_width, int win_height);
+  void draw_constellation_panel(QPainter &p, int win_width, int win_height);
 
 private:
   std::vector<std::vector<LonLat>> shp_parts_;
@@ -1422,12 +1101,25 @@ private:
   // --- 新增：搜尋功能與 Dark/Light 模式獨立變數 ---
   // =========================================================
   bool dark_map_mode_ = false;
+  GuiLanguage ui_language_ = GuiLanguage::English;
+  double control_text_scale_ = 1.0;
+  double control_caption_scale_ = 1.0;
+  double control_switch_option_scale_ = 1.0;
+  double control_value_scale_ = 1.0;
+  QColor control_accent_color_ = QColor("#00e5ff");
+  QColor control_border_color_ = QColor("#b9cadf");
+  QColor control_text_color_ = QColor("#f8fbff");
+  QColor control_dim_text_color_ = QColor("#6b7b90");
   QRect dark_mode_btn_rect_;
+  QRect lang_btn_rect_;
+  QRect control_gear_btn_rect_;
 
   QLineEdit *search_box_ = nullptr;
   QListWidget *search_results_list_ = nullptr;
   QNetworkAccessManager *search_net_ = nullptr;
   QNetworkAccessManager *geo_net_ = nullptr;
+  QTimer *search_suggest_timer_ = nullptr;
+  QString pending_search_query_;
   int search_seq_counter_ = 0;
   int latest_search_seq_ = 0;
   bool user_geo_valid_ = false;
@@ -1446,6 +1138,7 @@ private:
   QRect tutorial_prev_btn_rect_;
   QRect tutorial_next_btn_rect_;
   QRect tutorial_close_btn_rect_;
+  QLabel *alert_overlay_ = nullptr;
   bool tutorial_enabled_ = false;       // default off
   bool tutorial_overlay_visible_ = false;
   int tutorial_step_ = 0;
@@ -1495,6 +1188,10 @@ private:
   }
   // =========================================================
 };
+
+#include "gui/core/map_widget_ui_methods.inl"
+#include "gui/tutorial/map_widget_tutorial_methods.inl"
+#include "gui/control/map_widget_control_methods.inl"
 
 #include "main_gui_path_methods.inl"
 

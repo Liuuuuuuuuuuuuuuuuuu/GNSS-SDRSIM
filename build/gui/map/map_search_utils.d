@@ -74,6 +74,8 @@ build/gui/map/map_search_utils.o: gui/map/map_search_utils.cpp \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qjsonobject.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QJsonValue \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qjsonvalue.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QLocale \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qlocale.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QRegularExpression \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qregularexpression.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QUrlQuery \
@@ -153,6 +155,8 @@ gui/map/map_search_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qjsonobject.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QJsonValue:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qjsonvalue.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QLocale:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qlocale.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QRegularExpression:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qregularexpression.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QUrlQuery:
