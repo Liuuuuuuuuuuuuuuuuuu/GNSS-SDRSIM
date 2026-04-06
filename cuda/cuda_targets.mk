@@ -1,5 +1,6 @@
 COMMA := ,
 GENCODE = -gencode arch=compute_$(1)$(COMMA)code=sm_$(1)
+GENCODE_PTX = -gencode arch=compute_$(1)$(COMMA)code=compute_$(1)
 
 NVCC_AVAILABLE_CODES := $(shell $(NVCC) --list-gpu-code 2>/dev/null)
 HAS_SM_61 := $(filter sm_61,$(NVCC_AVAILABLE_CODES))
@@ -9,16 +10,18 @@ HAS_SM_89 := $(filter sm_89,$(NVCC_AVAILABLE_CODES))
 HAS_SM_120 := $(filter sm_120,$(NVCC_AVAILABLE_CODES))
 HAS_SM_121 := $(filter sm_121,$(NVCC_AVAILABLE_CODES))
 
-ifeq ($(HAS_SM_61),)
-$(warning Current NVCC does not provide sm_61 (GTX 10 series). Use CUDA 12.x NVCC for Pascal binary.)
-endif
-
 GENCODE_PASCAL = $(call GENCODE,61)
 GENCODE_TURING = $(call GENCODE,75)
 GENCODE_AMPERE = $(call GENCODE,86)
 GENCODE_ADA = $(call GENCODE,89)
 GENCODE_BLACKWELL = $(strip $(if $(HAS_SM_120),$(call GENCODE,120),) $(if $(HAS_SM_121),$(call GENCODE,121),))
 GENCODE_MODERN = $(strip $(if $(HAS_SM_89),$(call GENCODE,89),) $(if $(HAS_SM_120),$(call GENCODE,120),) $(if $(HAS_SM_121),$(call GENCODE,121),))
+PTX_FALLBACK = $(strip \
+	$(if $(HAS_SM_120),$(call GENCODE_PTX,120),\
+	  $(if $(HAS_SM_89),$(call GENCODE_PTX,89),\
+	    $(if $(HAS_SM_86),$(call GENCODE_PTX,86),\
+	      $(if $(HAS_SM_75),$(call GENCODE_PTX,75),\
+	        $(if $(HAS_SM_61),$(call GENCODE_PTX,61),))))))
 
 $(CUDA_OBJ_DIR)/bdssim_sm61.o: bdssim.cu
 	@mkdir -p $(CUDA_OBJ_DIR)

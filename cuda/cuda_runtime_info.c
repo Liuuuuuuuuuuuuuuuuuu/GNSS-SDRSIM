@@ -18,9 +18,16 @@ static int is_truthy_env(const char *v)
 
 void cuda_runtime_apply_safe_env(void)
 {
-    setenv("CUDA_DISABLE_PTX_JIT", "1", 1);
-    setenv("CUDA_FORCE_PTX_JIT", "0", 1);
-    setenv("CUDA_DISABLE_JIT", "1", 1);
+    const char *force_disable_jit = getenv("BDS_CUDA_DISABLE_JIT");
+    if (is_truthy_env(force_disable_jit)) {
+        setenv("CUDA_DISABLE_PTX_JIT", "1", 1);
+        setenv("CUDA_FORCE_PTX_JIT", "0", 1);
+        setenv("CUDA_DISABLE_JIT", "1", 1);
+    } else {
+        setenv("CUDA_DISABLE_PTX_JIT", "0", 1);
+        setenv("CUDA_FORCE_PTX_JIT", "0", 1);
+        setenv("CUDA_DISABLE_JIT", "0", 1);
+    }
     setenv("CUDA_MODULE_LOADING", "EAGER", 1);
 }
 

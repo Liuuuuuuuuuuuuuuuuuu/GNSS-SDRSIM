@@ -1,11 +1,39 @@
 CC = gcc
 CXX = g++
-NVCC ?= /usr/local/cuda-12.8/bin/nvcc
+NVCC ?= $(shell command -v nvcc 2>/dev/null || echo /usr/local/cuda/bin/nvcc)
 CCACHE ?= $(shell command -v ccache 2>/dev/null)
 .DEFAULT_GOAL := all
 BIN_DIR ?= bin
 OBJ_DIR ?= build
 CUDA_OBJ_DIR ?= $(OBJ_DIR)/cuda
+AUTO_PORTABLE ?= 0
+JOBS ?= $(shell nproc)
+PORTABLE_NAME ?= GNSS-SDRSIM
+VERSION_MODE ?= manual
+PORTABLE_VERSION ?= 1.0
+DATE_VERSION_FORMAT ?= +%Y.%m.%d
+AUTO_PATCH_VERSION ?= $(shell \
+	latest_tag=$$(git tag --list 2>/dev/null | sed -n 's/^v\{0,1\}\([0-9]\+\.[0-9]\+\.[0-9]\+\)$$/\1/p' | sort -V | tail -n1); \
+	if [ -z "$$latest_tag" ]; then \
+		echo 0.0.1; \
+	else \
+		IFS=. read -r major minor patch <<EOF; \
+$$latest_tag \
+EOF \
+		echo "$$major.$$minor.$$((patch + 1))"; \
+	fi)
+DATE_VERSION ?= $(shell date '$(DATE_VERSION_FORMAT)')
+
+ifeq ($(VERSION_MODE),auto-patch)
+PORTABLE_VERSION_EFFECTIVE := $(AUTO_PATCH_VERSION)
+else ifeq ($(VERSION_MODE),date)
+PORTABLE_VERSION_EFFECTIVE := $(DATE_VERSION)
+else
+PORTABLE_VERSION_EFFECTIVE := $(PORTABLE_VERSION)
+endif
+
+PORTABLE_RELEASE_DIR ?= dist/$(PORTABLE_NAME)-$(PORTABLE_VERSION_EFFECTIVE)-portable
+PORTABLE_SELF_CHECK_SCRIPT ?= scripts/portable-self-check.sh
 
 ifneq ($(strip $(CCACHE)),)
 CC := $(CCACHE) gcc
@@ -36,7 +64,7 @@ CFLAGS = -I. $(addprefix -I,$(GUI_SRC_DIRS)) -O3 -march=native -ffast-math -Wall
 CXXFLAGS = $(CFLAGS) -std=c++14 $(QT_CFLAGS)
 NVCCFLAGS_BASE = -O3 --use_fast_math -Xptxas -O3 -Xcompiler "-O3 -fopenmp -fPIC" -I.
 
-CUDA_PATH ?= $(patsubst %/bin/nvcc,%,$(NVCC))
+CUDA_PATH ?= $(if $(filter /usr/local/cuda/%,$(NVCC)),$(patsubst %/bin/nvcc,%,$(NVCC)),/usr/local/cuda)
 LIBS = -L$(CUDA_PATH)/lib64 -lm -luhd -lboost_system -lcudart -pthread $(QT_LIBS)
 
 include cuda/cuda_targets.mk
@@ -47,7 +75,13 @@ GENCODE_ALL = $(strip \
 	$(if $(HAS_SM_86),$(GENCODE_AMPERE),) \
 	$(if $(HAS_SM_89),$(GENCODE_ADA),) \
 	$(GENCODE_BLACKWELL))
+GENCODE_FAT = $(strip $(GENCODE_ALL) $(PTX_FALLBACK))
 CUDA_MULTI_OBJ = $(CUDA_OBJ_DIR)/bdssim_multi.o
+FAT_BIN = $(BIN_DIR)/bds-sim-fat
+LAUNCHER_TEMPLATE = scripts/bds-sim-launcher.sh
+REBUILD_SCRIPT = scripts/rebuild-local.sh
+SUPPORT_CHECK_SCRIPT = scripts/check-gpu-series-support.sh
+PORTABLE_BUILD_SCRIPT = scripts/build-portable.sh
 
 SUPPORTED_GPU_BIN_NAMES =
 ifneq ($(HAS_SM_61),)
@@ -72,7 +106,23 @@ endif
 SUPPORTED_GPU_BINS = $(addprefix $(BIN_DIR)/,$(SUPPORTED_GPU_BIN_NAMES))
 
 all: bds-sim
-all-gpu-binaries: $(SUPPORTED_GPU_BINS)
+ifneq ($(filter 1 true yes on,$(AUTO_PORTABLE)),)
+all: portable
+endif
+
+release:
+	@$(MAKE) -j$(JOBS) AUTO_PORTABLE=1 all
+all-gpu-binaries: $(FAT_BIN) $(SUPPORTED_GPU_BINS)
+check-gpu-series-support: $(SUPPORT_CHECK_SCRIPT)
+	@bash $(SUPPORT_CHECK_SCRIPT)
+portable: bds-sim $(PORTABLE_BUILD_SCRIPT)
+	@PORTABLE_NAME='$(PORTABLE_NAME)' PORTABLE_VERSION='$(PORTABLE_VERSION_EFFECTIVE)' PORTABLE_RELEASE_DIR='$(PORTABLE_RELEASE_DIR)' bash $(PORTABLE_BUILD_SCRIPT)
+portable-self-check: $(PORTABLE_SELF_CHECK_SCRIPT)
+	@bash $(PORTABLE_SELF_CHECK_SCRIPT)
+print-gencode-fat:
+	@echo $(GENCODE_FAT)
+print-portable-version:
+	@echo $(PORTABLE_VERSION_EFFECTIVE)
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)
@@ -84,72 +134,25 @@ $(OBJ_DIR)/%.o: %.c
 
 $(CUDA_MULTI_OBJ): bdssim.cu
 	@mkdir -p $(dir $@)
-	@if [ -z "$(GENCODE_ALL)" ]; then echo "[make] no supported GPU arch found in current NVCC ($(NVCC))."; exit 2; fi
-	$(NVCC) $(NVCCFLAGS_BASE) $(GENCODE_ALL) -c $< -o $@
+	@if [ -z "$(GENCODE_FAT)" ]; then echo "[make] no usable gencode (SASS/PTX) found in current NVCC ($(NVCC))."; exit 2; fi
+	$(NVCC) $(NVCCFLAGS_BASE) $(GENCODE_FAT) -c $< -o $@
 
-bds-sim: Makefile $(SUPPORTED_GPU_BINS)
-	@printf '%s\n' \
-	'#!/usr/bin/env bash' \
-	'set -eu' \
-	'' \
-	'ROOT_DIR="$$(cd "$$(dirname "$${BASH_SOURCE:-$$0}")" && pwd)"' \
-	'' \
-	'pick_from_cc() {' \
-	'  cc="$$1"' \
-	'  case "$$cc" in' \
-	'    6.1*) echo "bds-sim-pascal" ;;' \
-	'    7.5*) echo "bds-sim-turing" ;;' \
-	'    8.6*|8.7*|8.8*) echo "bds-sim-ampere" ;;' \
-	'    8.9*) echo "bds-sim-ada" ;;' \
-	'    12.*|11.*|10.*) echo "bds-sim-blackwell" ;;' \
-	'    *) echo "bds-sim-modern" ;;' \
-	'  esac' \
-	'}' \
-	'' \
-	'gpu_cc=""' \
-	'if command -v nvidia-smi >/dev/null 2>&1; then' \
-	'  gpu_cc=$$(nvidia-smi --query-gpu=compute_cap --format=csv,noheader 2>/dev/null | head -n 1 | tr -d "[:space:]" || true)' \
-	'fi' \
-	'' \
-	'selected=""' \
-	'if [ -n "$$gpu_cc" ]; then' \
-	'  selected=$$(pick_from_cc "$$gpu_cc")' \
-	'else' \
-	'  gpu_name=""' \
-	'  if command -v nvidia-smi >/dev/null 2>&1; then' \
-	'    gpu_name=$$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -n 1 || true)' \
-	'  fi' \
-	'  case "$$gpu_name" in' \
-	'    *"GTX 10"*|*"P10"*) selected="bds-sim-pascal" ;;' \
-	'    *"RTX 20"*|*"TITAN RTX"*) selected="bds-sim-turing" ;;' \
-	'    *"RTX 30"*) selected="bds-sim-ampere" ;;' \
-	'    *"RTX 40"*) selected="bds-sim-ada" ;;' \
-	'    *"RTX 50"*) selected="bds-sim-blackwell" ;;' \
-	'    *) selected="bds-sim-modern" ;;' \
-	'  esac' \
-	'fi' \
-	'' \
-	'if [ "$$selected" = "bds-sim-pascal" ] && [ ! -x "$$ROOT_DIR/$(BIN_DIR)/$$selected" ]; then' \
-	'  echo "[launcher] Pascal GPU detected, but $$selected was not built." >&2' \
-	'  echo "[launcher] Rebuild with CUDA 12.x NVCC that supports sm_61:" >&2' \
-	'  echo "[launcher]   NVCC=/usr/local/cuda-12.4/bin/nvcc make clean && NVCC=/usr/local/cuda-12.4/bin/nvcc make" >&2' \
-	'  exit 2' \
-	'fi' \
-	'' \
-	'for bin in "$$selected" bds-sim-modern bds-sim-ada bds-sim-ampere bds-sim-turing bds-sim-blackwell; do' \
-	'  if [ -x "$$ROOT_DIR/$(BIN_DIR)/$$bin" ]; then' \
-	'    echo "[launcher] Using $$bin (compute_cap=$${gpu_cc:-unknown})" >&2' \
-	'    exec "$$ROOT_DIR/$(BIN_DIR)/$$bin" "$$@"' \
-	'  fi' \
-	'done' \
-	'' \
-	'echo "[launcher] No runnable bds-sim binary found. Please run: make" >&2' \
-	'exit 2' > $@
+bds-sim: Makefile $(FAT_BIN) $(SUPPORTED_GPU_BINS) $(LAUNCHER_TEMPLATE) $(REBUILD_SCRIPT)
+	@sed \
+		-e 's|@BIN_DIR@|$(BIN_DIR)|g' \
+		-e 's|@REBUILD_SCRIPT@|$(REBUILD_SCRIPT)|g' \
+		$(LAUNCHER_TEMPLATE) > $@
 	@chmod +x $@
+
+$(SUPPORT_CHECK_SCRIPT):
+	@chmod +x $(SUPPORT_CHECK_SCRIPT)
 
 
 $(BIN_DIR):
 	mkdir -p $@
+
+$(FAT_BIN): $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
 
 $(BIN_DIR)/bds-sim-pascal: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
@@ -171,6 +174,6 @@ $(BIN_DIR)/bds-sim-modern: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
-	rm -f bds-sim bds-sim-pascal bds-sim-turing bds-sim-ampere bds-sim-ada bds-sim-blackwell bds-sim-modern
+	rm -f bds-sim bds-sim-fat bds-sim-pascal bds-sim-turing bds-sim-ampere bds-sim-ada bds-sim-blackwell bds-sim-modern
 
 -include $(DEPS)

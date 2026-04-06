@@ -12,6 +12,7 @@ extern "C" void start_map_gui(double start_bdt) {
   g_gui_start_req.store(0);
   g_gui_stop_req.store(0);
   g_gui_exit_req.store(0);
+  map_gui_reset_monitor_views();
   map_gui_set_run_state(0);
   g_running.store(true);
   g_gui_thread = std::thread(gui_thread_main);
@@ -180,15 +181,33 @@ extern "C" void map_gui_set_single_prn_candidates(const int *prns, int count) {
 extern "C" void map_gui_set_run_state(int running) {
   std::lock_guard<std::mutex> lk(g_ctrl_mtx);
   g_ctrl.running_ui = running ? true : false;
-  if (running) {
-    g_gui_reset_waterfall_req.fetch_add(1);
-    std::lock_guard<std::mutex> tlk(g_time_mtx);
-    g_start_tp = std::chrono::steady_clock::now();
-    g_tx_start_tp = g_start_tp;
-  }
   if (!running) {
     g_tx_active.store(false);
   }
+}
+
+extern "C" void map_gui_reset_monitor_views(void) {
+  pthread_mutex_lock(&g_gui_spectrum_mtx);
+  g_gui_spectrum_valid = 0;
+  g_gui_time_valid = 0;
+  g_gui_spectrum_bins = GUI_SPECTRUM_BINS;
+  g_gui_time_samples = GUI_TIME_MON_SAMPLES;
+  for (int i = 0; i < GUI_SPECTRUM_BINS; ++i) {
+    g_gui_spectrum_db[i] = 0.0f;
+  }
+  for (int i = 0; i < GUI_TIME_MON_SAMPLES; ++i) {
+    g_gui_time_iq[2 * i] = 0;
+    g_gui_time_iq[2 * i + 1] = 0;
+  }
+  g_gui_spectrum_seq += 1;
+  pthread_mutex_unlock(&g_gui_spectrum_mtx);
+  g_gui_reset_waterfall_req.fetch_add(1);
+}
+
+extern "C" void map_gui_mark_init_start(void) {
+  std::lock_guard<std::mutex> tlk(g_time_mtx);
+  g_start_tp = std::chrono::steady_clock::now();
+  g_tx_start_tp = g_start_tp;
 }
 
 extern "C" void map_gui_set_tx_active(int active) {

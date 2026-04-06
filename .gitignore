@@ -10,6 +10,7 @@
 *:Zone.Identifier
 
 # Build artifacts
+dist/
 *.a
 *.so
 *.dylib

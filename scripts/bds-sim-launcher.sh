@@ -2,15 +2,15 @@
 set -eu
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"
-if [ -d "$SCRIPT_DIR/bin" ]; then
+if [ -d "$SCRIPT_DIR/@BIN_DIR@" ]; then
   ROOT_DIR="$SCRIPT_DIR"
-elif [ -d "$SCRIPT_DIR/../bin" ]; then
+elif [ -d "$SCRIPT_DIR/../@BIN_DIR@" ]; then
   ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 else
   ROOT_DIR="$SCRIPT_DIR"
 fi
-BIN_DIR="bin"
-REBUILD_SCRIPT="scripts/rebuild-local.sh"
+BIN_DIR="@BIN_DIR@"
+REBUILD_SCRIPT="@REBUILD_SCRIPT@"
 FAT_BIN="$ROOT_DIR/$BIN_DIR/bds-sim-fat"
 
 PORTABLE_LIB_DIRS=""

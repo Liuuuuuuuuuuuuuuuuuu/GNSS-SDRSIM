@@ -1041,9 +1041,15 @@ static void stop_and_reset_runtime_state(sim_config_t *cfg,
 
 int main(int argc, char *argv[])
 {
-    // Avoid known WSL/PTX JIT crash path on some driver + GPU combinations.
     cuda_runtime_apply_safe_env();
-    fprintf(stderr, "[cuda] JIT disabled (CUDA_DISABLE_JIT=1, CUDA_DISABLE_PTX_JIT=1).\n");
+    const char *disable_jit = getenv("CUDA_DISABLE_JIT");
+    const char *disable_ptx_jit = getenv("CUDA_DISABLE_PTX_JIT");
+    if ((disable_jit && strcmp(disable_jit, "1") == 0) ||
+        (disable_ptx_jit && strcmp(disable_ptx_jit, "1") == 0)) {
+        fprintf(stderr, "[cuda] JIT disabled (set BDS_CUDA_DISABLE_JIT=0 to re-enable PTX fallback).\n");
+    } else {
+        fprintf(stderr, "[cuda] JIT enabled (PTX fallback available when needed).\n");
+    }
     const int cuda_runtime_enabled = cuda_runtime_is_enabled_by_env();
     int cuda_runtime_smoke_ok = 1;
     if (cuda_runtime_enabled && cuda_runtime_should_run_smoke()) {

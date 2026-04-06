@@ -16,6 +16,8 @@ void map_gui_set_mode_policy(int spoof_allowed);
 void map_gui_get_control_config(sim_config_t *cfg, double *target_cn0);
 void map_gui_set_single_prn_candidates(const int *prns, int count);
 void map_gui_set_rinex_name(const char *rinex_path);
+void map_gui_reset_monitor_views(void);
+void map_gui_mark_init_start(void);
 void map_gui_set_run_state(int running);
 void map_gui_set_tx_active(int active);
 void map_gui_set_llh_ready(int ready);

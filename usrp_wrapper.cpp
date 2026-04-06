@@ -150,7 +150,8 @@ int usrp_init(double freq, double rate, double gain, int use_external_clk, int s
         std::cout << "\n==========================================" << std::endl;
         std::cout << "[USRP] 啟動「真・即時同步 (Real-Time with Backpressure)」" << std::endl;
         
-        usrp_dev = uhd::usrp::multi_usrp::make("num_send_frames=1024,send_frame_size=8192");
+        uhd::device_addr_t device_args("num_send_frames=1024,send_frame_size=8192");
+        usrp_dev = uhd::usrp::multi_usrp::make(device_args);
         usrp_dev->set_clock_source(use_external_clk ? "external" : "internal");
         usrp_dev->set_tx_rate(rate);
         double actual_rate = usrp_dev->get_tx_rate();
