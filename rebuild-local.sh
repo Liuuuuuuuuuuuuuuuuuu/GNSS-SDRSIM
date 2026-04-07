@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -eu
 
-ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")/.." && pwd)"
+ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")" && pwd)"
 NVCC_BIN="${NVCC:-$(command -v nvcc 2>/dev/null || true)}"
 
 if [ -z "$NVCC_BIN" ]; then

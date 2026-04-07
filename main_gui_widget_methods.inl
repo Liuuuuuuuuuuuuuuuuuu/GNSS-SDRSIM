@@ -156,6 +156,11 @@ void MapWidget::onTick() {
     redraw = true;
     update();
   } else {
+    if (tutorial_overlay_visible_) {
+      // Full-window refresh avoids clip-region artifacts when tutorial card moves.
+      update();
+    }
+
     if (scene_dirty) {
       update(map_rect);
     }

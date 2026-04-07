@@ -63,6 +63,7 @@ bool control_logic_handle_click(int x, int y, int win_width, int win_height, Gui
             // Enter running UI immediately so STOP and monitor widgets appear
             // without waiting for the main loop to consume the start request.
             ctrl->running_ui = true;
+            map_gui_mark_init_start();  // Reset init timer when START is pressed
             start_req->fetch_add(1);
             return true;
         }

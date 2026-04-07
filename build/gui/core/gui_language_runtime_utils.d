@@ -28,19 +28,21 @@ build/gui/core/gui_language_runtime_utils.o: \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringliteral.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringalgorithms.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringview.h \
- gui/core/gui_i18n.h /usr/include/x86_64-linux-gnu/qt5/QtCore/QDir \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qdir.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qfileinfo.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qfile.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qfiledevice.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qiodevice.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qobject.h \
+ gui/core/gui_i18n.h gui/core/gui_font_manager.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qtguiglobal.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qtgui-config.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qwindowdefs.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qobjectdefs.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qobjectdefs_impl.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qsharedpointer.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qshareddata.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qhash.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qiterator.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qlist.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qalgorithms.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qiterator.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qhashfunctions.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qpair.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qvector.h \
@@ -49,31 +51,19 @@ build/gui/core/gui_language_runtime_utils.o: \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qregexp.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringmatcher.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qsharedpointer_impl.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qobject.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qscopedpointer.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qmetatype.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qvarlengtharray.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qcontainerfwd.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qobject_impl.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qshareddata.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qhash.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/QFileInfo \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qfileinfo.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qtguiglobal.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qtgui-config.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qwindowdefs.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qsharedpointer.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qsharedpointer_impl.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontDatabase \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontdatabase.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLineEdit \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlineedit.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qframe.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qmargins.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qpaintdevice.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h \
@@ -88,16 +78,31 @@ build/gui/core/gui_language_runtime_utils.o: \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qpolygon.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qregion.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qdatastream.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qiodevice.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qline.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qtransform.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qimage.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qpixelformat.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qpixmap.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontinfo.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QDir \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qdir.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qfileinfo.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qfile.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qfiledevice.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QFileInfo \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qfileinfo.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontDatabase \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontdatabase.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLineEdit \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlineedit.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qframe.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qtextcursor.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qtextformat.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qvariant.h \
@@ -105,9 +110,7 @@ build/gui/core/gui_language_runtime_utils.o: \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qpen.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qtextoption.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QLocale \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qlocale.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qlocale.h
 gui/core/gui_language_runtime_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QString:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
@@ -137,19 +140,21 @@ gui/core/gui_language_runtime_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringalgorithms.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringview.h:
 gui/core/gui_i18n.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/QDir:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qdir.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qfileinfo.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qfile.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qfiledevice.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qiodevice.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qobject.h:
+gui/core/gui_font_manager.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QFont:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qtguiglobal.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qtgui-config.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qwindowdefs.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qobjectdefs.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qobjectdefs_impl.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qsharedpointer.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qshareddata.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qhash.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qiterator.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qlist.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qalgorithms.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qiterator.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qhashfunctions.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qpair.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qvector.h:
@@ -158,31 +163,19 @@ gui/core/gui_i18n.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qregexp.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringmatcher.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qsharedpointer_impl.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qobject.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qscopedpointer.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qmetatype.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qvarlengtharray.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qcontainerfwd.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qobject_impl.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qshareddata.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qhash.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/QFileInfo:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qfileinfo.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/QFont:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qtguiglobal.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qtgui-config.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qwindowdefs.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qsharedpointer.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qsharedpointer_impl.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/QFontDatabase:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qfontdatabase.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLineEdit:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlineedit.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qframe.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qmargins.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpaintdevice.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h:
@@ -197,16 +190,31 @@ gui/core/gui_i18n.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpolygon.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qregion.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qdatastream.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qiodevice.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qline.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qtransform.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qimage.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpixelformat.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpixmap.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontinfo.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QDir:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qdir.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qfileinfo.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qfile.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qfiledevice.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QFileInfo:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qfileinfo.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QFontDatabase:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qfontdatabase.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLineEdit:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qlineedit.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qframe.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qtextcursor.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qtextformat.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qvariant.h:
@@ -215,5 +223,3 @@ gui/core/gui_i18n.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qtextoption.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QLocale:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qlocale.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:

@@ -109,6 +109,19 @@ build/main_gui.o: main_gui.cpp main_gui.h bdssim.h coord.h orbits.h \
  gui/layout/map_monitor_panels_utils.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QImage \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qimage.h gui/core/gui_i18n.h \
+ gui/core/gui_font_manager.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h \
  gui/core/gui_language_runtime_utils.h \
  gui/map/map_osm_interaction_utils.h gui/map/map_osm_panel_utils.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QPixmap \
@@ -141,25 +154,22 @@ build/main_gui.o: main_gui.cpp main_gui.h bdssim.h coord.h orbits.h \
  gui/geo/osm_projection.h gui/path/path_builder.h \
  gui/layout/quad_panel_layout.h gui/core/rf_mode_utils.h \
  gui/core/signal_snapshot.h gui/tutorial/tutorial_interaction_utils.h \
- gui/tutorial/tutorial_overlay_utils.h gui/tutorial/tutorial_flow_utils.h \
+ gui/tutorial/tutorial_overlay_utils.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QPointF \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QSize \
+ gui/tutorial/tutorial_flow_utils.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QApplication \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qapplication.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qcoreapplication.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qcoreevent.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qeventloop.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qguiapplication.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qinputmethod.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QCheckBox \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qcheckbox.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractbutton.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qicon.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QCloseEvent \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qevent.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qfile.h \
@@ -175,8 +185,6 @@ build/main_gui.o: main_gui.cpp main_gui.h bdssim.h coord.h orbits.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qdialog.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QDialogButtonBox \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qdialogbuttonbox.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QFormLayout \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qformlayout.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLayout \
@@ -218,6 +226,7 @@ build/main_gui.o: main_gui.cpp main_gui.h bdssim.h coord.h orbits.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtabwidget.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qrubberband.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidgetItem \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QKeyEvent \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QMouseEvent \
  /usr/include/x86_64-linux-gnu/qt5/QtNetwork/QNetworkAccessManager \
  /usr/include/x86_64-linux-gnu/qt5/QtNetwork/qnetworkaccessmanager.h \
@@ -282,8 +291,6 @@ build/main_gui.o: main_gui.cpp main_gui.h bdssim.h coord.h orbits.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qmargins.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qsurface.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qsurfaceformat.h \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget \
- /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
  /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QVBoxLayout path.h \
  main_gui_state.inl gui/core/map_widget_ui_methods.inl \
  gui/tutorial/map_widget_tutorial_methods.inl \
@@ -414,6 +421,19 @@ gui/layout/map_monitor_panels_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QImage:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qimage.h:
 gui/core/gui_i18n.h:
+gui/core/gui_font_manager.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QFont:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h:
 gui/core/gui_language_runtime_utils.h:
 gui/map/map_osm_interaction_utils.h:
 gui/map/map_osm_panel_utils.h:
@@ -456,25 +476,21 @@ gui/core/rf_mode_utils.h:
 gui/core/signal_snapshot.h:
 gui/tutorial/tutorial_interaction_utils.h:
 gui/tutorial/tutorial_overlay_utils.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QPointF:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QSize:
 gui/tutorial/tutorial_flow_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QApplication:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qapplication.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qcoreapplication.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qcoreevent.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qeventloop.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qguiapplication.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qinputmethod.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QCheckBox:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qcheckbox.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qabstractbutton.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qicon.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QCloseEvent:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qevent.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qfile.h:
@@ -490,8 +506,6 @@ gui/tutorial/tutorial_flow_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qdialog.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QDialogButtonBox:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qdialogbuttonbox.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/QFont:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QFormLayout:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qformlayout.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QLayout:
@@ -533,6 +547,7 @@ gui/tutorial/tutorial_flow_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtabwidget.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qrubberband.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QListWidgetItem:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QKeyEvent:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QMouseEvent:
 /usr/include/x86_64-linux-gnu/qt5/QtNetwork/QNetworkAccessManager:
 /usr/include/x86_64-linux-gnu/qt5/QtNetwork/qnetworkaccessmanager.h:
@@ -597,8 +612,6 @@ gui/tutorial/tutorial_flow_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qmargins.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qsurface.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qsurfaceformat.h:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget:
-/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
 /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QVBoxLayout:
 path.h:
 main_gui_state.inl:

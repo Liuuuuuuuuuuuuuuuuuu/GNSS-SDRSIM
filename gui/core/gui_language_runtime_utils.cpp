@@ -1,4 +1,5 @@
 #include "gui/core/gui_language_runtime_utils.h"
+#include "gui/core/gui_font_manager.h"
 
 #include <QDir>
 #include <QFileInfo>
@@ -52,25 +53,6 @@ void gui_runtime_load_bundled_fonts() {
 }
 
 void gui_runtime_apply_language_font(QWidget *widget, GuiLanguage language) {
-  if (!widget) {
-    return;
-  }
-
-  QFont f = widget->font();
-  if (gui_language_is_zh_tw(language)) {
-    f.setFamilies(QStringList() << "DFKai-SB"
-                                << "標楷體"
-                                << "KaiU"
-                                << "BiauKai"
-                                << "KaiTi"
-                                << "Noto Serif CJK TC"
-                                << "Noto Sans CJK TC");
-  } else {
-    f.setFamilies(QStringList() << "Times New Roman"
-                                << "Times New Roman PS MT"
-                                << "Nimbus Roman"
-                                << "Liberation Serif");
-  }
-  f.setStyleHint(QFont::Serif);
-  widget->setFont(f);
+  // Delegate to the centralized font manager so one file controls all fonts.
+  gui_font_apply_to_widget(widget, language);
 }

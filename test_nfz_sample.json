@@ -1,0 +1,76 @@
+{
+  "data": {
+    "areas": [
+      {
+        "name": "Taiwan Taoyuan International Airport",
+        "level": 2,
+        "type": "airport",
+        "radius": 5000,
+        "lat": 25.0797,
+        "lng": 121.2342,
+        "polygon_points": [
+          {"lat": 25.0900, "lng": 121.2200},
+          {"lat": 25.0950, "lng": 121.2250},
+          {"lat": 25.0950, "lng": 121.2350},
+          {"lat": 25.0900, "lng": 121.2400},
+          {"lat": 25.0700, "lng": 121.2400},
+          {"lat": 25.0650, "lng": 121.2350},
+          {"lat": 25.0650, "lng": 121.2250},
+          {"lat": 25.0700, "lng": 121.2200}
+        ],
+        "inner_rings": [
+          [
+            {"lat": 25.0850, "lng": 121.2300},
+            {"lat": 25.0850, "lng": 121.2350},
+            {"lat": 25.0800, "lng": 121.2350},
+            {"lat": 25.0800, "lng": 121.2300}
+          ]
+        ]
+      },
+      {
+        "name": "Taiwan Kaohsiung International Airport",
+        "level": 2,
+        "type": "airport",
+        "radius": 4000,
+        "lat": 22.5848,
+        "lng": 120.2969,
+        "polygon_points": [
+          {"lat": 22.5950, "lng": 120.2850},
+          {"lat": 22.6000, "lng": 120.2900},
+          {"lat": 22.6000, "lng": 120.3050},
+          {"lat": 22.5950, "lng": 120.3100},
+          {"lat": 22.5750, "lng": 120.3100},
+          {"lat": 22.5700, "lng": 120.3050},
+          {"lat": 22.5700, "lng": 120.2900},
+          {"lat": 22.5750, "lng": 120.2850}
+        ]
+      },
+      {
+        "name": "Taiwan Taipei International Airport (Domestic Terminal)",
+        "level": 1,
+        "type": "authorization_zone",
+        "radius": 8000,
+        "lat": 25.0855,
+        "lng": 121.2321,
+        "polygon_points": [
+          {"lat": 25.1100, "lng": 121.1950},
+          {"lat": 25.1200, "lng": 121.2100},
+          {"lat": 25.1200, "lng": 121.2550},
+          {"lat": 25.1100, "lng": 121.2700},
+          {"lat": 25.0600, "lng": 121.2700},
+          {"lat": 25.0500, "lng": 121.2550},
+          {"lat": 25.0500, "lng": 121.2100},
+          {"lat": 25.0600, "lng": 121.1950}
+        ],
+        "inner_rings": [
+          [
+            {"lat": 25.0950, "lng": 121.2200},
+            {"lat": 25.0950, "lng": 121.2450},
+            {"lat": 25.0750, "lng": 121.2450},
+            {"lat": 25.0750, "lng": 121.2200}
+          ]
+        ]
+      }
+    ]
+  }
+}

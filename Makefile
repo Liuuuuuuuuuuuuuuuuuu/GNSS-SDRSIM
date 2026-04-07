@@ -6,34 +6,7 @@ CCACHE ?= $(shell command -v ccache 2>/dev/null)
 BIN_DIR ?= bin
 OBJ_DIR ?= build
 CUDA_OBJ_DIR ?= $(OBJ_DIR)/cuda
-AUTO_PORTABLE ?= 0
 JOBS ?= $(shell nproc)
-PORTABLE_NAME ?= GNSS-SDRSIM
-VERSION_MODE ?= manual
-PORTABLE_VERSION ?= 1.0
-DATE_VERSION_FORMAT ?= +%Y.%m.%d
-AUTO_PATCH_VERSION ?= $(shell \
-	latest_tag=$$(git tag --list 2>/dev/null | sed -n 's/^v\{0,1\}\([0-9]\+\.[0-9]\+\.[0-9]\+\)$$/\1/p' | sort -V | tail -n1); \
-	if [ -z "$$latest_tag" ]; then \
-		echo 0.0.1; \
-	else \
-		IFS=. read -r major minor patch <<EOF; \
-$$latest_tag \
-EOF \
-		echo "$$major.$$minor.$$((patch + 1))"; \
-	fi)
-DATE_VERSION ?= $(shell date '$(DATE_VERSION_FORMAT)')
-
-ifeq ($(VERSION_MODE),auto-patch)
-PORTABLE_VERSION_EFFECTIVE := $(AUTO_PATCH_VERSION)
-else ifeq ($(VERSION_MODE),date)
-PORTABLE_VERSION_EFFECTIVE := $(DATE_VERSION)
-else
-PORTABLE_VERSION_EFFECTIVE := $(PORTABLE_VERSION)
-endif
-
-PORTABLE_RELEASE_DIR ?= dist/$(PORTABLE_NAME)-$(PORTABLE_VERSION_EFFECTIVE)-portable
-PORTABLE_SELF_CHECK_SCRIPT ?= scripts/portable-self-check.sh
 
 ifneq ($(strip $(CCACHE)),)
 CC := $(CCACHE) gcc
@@ -78,10 +51,9 @@ GENCODE_ALL = $(strip \
 GENCODE_FAT = $(strip $(GENCODE_ALL) $(PTX_FALLBACK))
 CUDA_MULTI_OBJ = $(CUDA_OBJ_DIR)/bdssim_multi.o
 FAT_BIN = $(BIN_DIR)/bds-sim-fat
-LAUNCHER_TEMPLATE = scripts/bds-sim-launcher.sh
-REBUILD_SCRIPT = scripts/rebuild-local.sh
-SUPPORT_CHECK_SCRIPT = scripts/check-gpu-series-support.sh
-PORTABLE_BUILD_SCRIPT = scripts/build-portable.sh
+LAUNCHER_TEMPLATE = bds-sim-launcher.sh
+REBUILD_SCRIPT = rebuild-local.sh
+SUPPORT_CHECK_SCRIPT = check-gpu-series-support.sh
 
 SUPPORTED_GPU_BIN_NAMES =
 ifneq ($(HAS_SM_61),)
@@ -106,23 +78,14 @@ endif
 SUPPORTED_GPU_BINS = $(addprefix $(BIN_DIR)/,$(SUPPORTED_GPU_BIN_NAMES))
 
 all: bds-sim
-ifneq ($(filter 1 true yes on,$(AUTO_PORTABLE)),)
-all: portable
-endif
 
 release:
-	@$(MAKE) -j$(JOBS) AUTO_PORTABLE=1 all
+	@$(MAKE) -j$(JOBS) all
 all-gpu-binaries: $(FAT_BIN) $(SUPPORTED_GPU_BINS)
 check-gpu-series-support: $(SUPPORT_CHECK_SCRIPT)
 	@bash $(SUPPORT_CHECK_SCRIPT)
-portable: bds-sim $(PORTABLE_BUILD_SCRIPT)
-	@PORTABLE_NAME='$(PORTABLE_NAME)' PORTABLE_VERSION='$(PORTABLE_VERSION_EFFECTIVE)' PORTABLE_RELEASE_DIR='$(PORTABLE_RELEASE_DIR)' bash $(PORTABLE_BUILD_SCRIPT)
-portable-self-check: $(PORTABLE_SELF_CHECK_SCRIPT)
-	@bash $(PORTABLE_SELF_CHECK_SCRIPT)
 print-gencode-fat:
 	@echo $(GENCODE_FAT)
-print-portable-version:
-	@echo $(PORTABLE_VERSION_EFFECTIVE)
 
 $(OBJ_DIR)/%.o: %.cpp
 	@mkdir -p $(dir $@)

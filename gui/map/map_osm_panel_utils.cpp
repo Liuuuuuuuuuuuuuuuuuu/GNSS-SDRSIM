@@ -19,6 +19,93 @@ bool draw_screen_point(const MapOsmPanelInput &in, double lat, double lon,
   return in.coord_to_screen(lat, lon, out);
 }
 
+struct NfzDebugStats {
+  int total = 0;
+  int circles = 0;
+  int polygons = 0;
+  int holes = 0;
+  int level1 = 0;
+  int level2 = 0;
+  int level8 = 0;
+};
+
+NfzDebugStats collect_nfz_debug_stats(const std::vector<DjiNfzZone> &zones) {
+  NfzDebugStats stats;
+  stats.total = static_cast<int>(zones.size());
+  for (const auto &z : zones) {
+    if (z.type == DjiNfzType::CIRCLE) {
+      ++stats.circles;
+    } else if (z.type == DjiNfzType::POLYGON) {
+      ++stats.polygons;
+      for (size_t i = 1; i < z.rings.size(); ++i) {
+        if (!z.rings[i].is_outer) {
+          ++stats.holes;
+        }
+      }
+    }
+
+    if (z.level == 1)
+      ++stats.level1;
+    else if (z.level == 2)
+      ++stats.level2;
+    else if (z.level == 8)
+      ++stats.level8;
+  }
+  return stats;
+}
+
+void draw_nfz_debug_badge(QPainter &p, const MapOsmPanelInput &in) {
+  if (!in.nfz_enabled || !in.nfz_zones)
+    return;
+
+  const NfzDebugStats stats = collect_nfz_debug_stats(*in.nfz_zones);
+  QString line1 = QString("NFZ z:%1 poly:%2 circ:%3 holes:%4")
+                      .arg(stats.total)
+                      .arg(stats.polygons)
+                      .arg(stats.circles)
+                      .arg(stats.holes);
+  QString line2 = QString("L1:%1 L2:%2 L8:%3 zoom:%4")
+                      .arg(stats.level1)
+                      .arg(stats.level2)
+                      .arg(stats.level8)
+                      .arg(in.osm_zoom);
+
+  const int pad_x = 8;
+  const int pad_y = 5;
+  const int line_gap = 3;
+  QFont f = p.font();
+  f.setPointSize(std::max(8, f.pointSize() - 1));
+  p.setFont(f);
+  const QFontMetrics fm(f);
+
+  const int text_w = std::max(fm.horizontalAdvance(line1), fm.horizontalAdvance(line2));
+  const int text_h = fm.height() * 2 + line_gap;
+  const int box_w = text_w + pad_x * 2;
+  const int box_h = text_h + pad_y * 2;
+
+  int x = in.panel.x() + 12;
+  int y = in.panel.y() + 52;
+  if (!in.search_box_rect.isEmpty() && in.search_box_rect.intersects(in.panel)) {
+    y = std::max(y, in.search_box_rect.bottom() + 8);
+  }
+
+  QRect box(x, y, box_w, box_h);
+  box = box.intersected(in.panel.adjusted(4, 4, -4, -4));
+  if (box.width() < 20 || box.height() < 20)
+    return;
+
+  p.setRenderHint(QPainter::Antialiasing, true);
+  p.setPen(QPen(QColor(125, 211, 252, 210), 1));
+  p.setBrush(QColor(2, 6, 23, 180));
+  p.drawRoundedRect(box, 6, 6);
+  p.setPen(QColor(186, 230, 253));
+  p.drawText(box.x() + pad_x, box.y() + pad_y + fm.ascent(), line1);
+  p.drawText(box.x() + pad_x,
+             box.y() + pad_y + fm.height() + line_gap + fm.ascent(),
+             line2);
+  p.setRenderHint(QPainter::Antialiasing, false);
+}
+
 } // namespace
 
 void map_draw_osm_panel(QPainter &p, const MapOsmPanelInput &in,
@@ -86,6 +173,7 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
     out->search_return_btn_rect = QRect();
     out->osm_stop_btn_rect = QRect();
     out->osm_runtime_rect = QRect();
+    out->status_badge_rects.clear();
   }
 
   if (in.nfz_enabled && in.nfz_zones && !in.nfz_zones->empty()) {
@@ -94,6 +182,8 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
                    return draw_screen_point(in, lat, lon, out_pt);
                  });
   }
+
+  draw_nfz_debug_badge(p, in);
 
   if (in.has_selected_llh) {
     double world = osm_world_size_for_zoom(in.osm_zoom);
@@ -263,6 +353,7 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
   controls_in.search_box_rect = in.search_box_rect;
   controls_in.tx_active = in.tx_active;
   controls_in.elapsed_sec = elapsed_sec;
+    controls_in.force_stop_preview = in.force_stop_preview;
 
   MapOsmControlsState controls_out;
   map_osm_draw_controls(p, controls_in, &controls_out);
@@ -275,6 +366,7 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
     out->search_return_btn_rect = controls_out.search_return_btn_rect;
     out->osm_stop_btn_rect = controls_out.osm_stop_btn_rect;
     out->osm_runtime_rect = controls_out.osm_runtime_rect;
+    out->nfz_legend_row_rects = controls_out.nfz_legend_row_rects;
   }
 
   QString status_txt = in.plan_status;
@@ -288,6 +380,10 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
   QStringList lines = map_osm_status_lines(zoom_txt, in.tutorial_enabled,
                                            in.tutorial_overlay_visible,
                                            status_txt, llh_txt, in.language);
+  std::vector<QRect> badge_rects;
   map_osm_draw_status_badges(p, in.panel, controls_out.osm_stop_btn_rect,
-                             in.running_ui, lines);
+                             in.running_ui, lines, &badge_rects);
+  if (out) {
+    out->status_badge_rects = std::move(badge_rects);
+  }
 }

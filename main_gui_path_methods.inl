@@ -401,4 +401,5 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
   search_return_btn_rect_ = osm_out.search_return_btn_rect;
   osm_stop_btn_rect_ = osm_out.osm_stop_btn_rect;
   osm_runtime_rect_ = osm_out.osm_runtime_rect;
+  osm_status_badge_rects_ = osm_out.status_badge_rects;
 }

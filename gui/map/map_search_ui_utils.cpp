@@ -36,7 +36,6 @@ int map_search_populate_results(QListWidget *list,
   for (const auto &r : results) {
     QListWidgetItem *item = new QListWidgetItem(r.line, list);
     item->setSizeHint(QSize(item->sizeHint().width(), 44));
-    item->setToolTip(r.display_name);
     item->setData(Qt::UserRole, r.lat);
     item->setData(Qt::UserRole + 1, r.lon);
     item->setData(Qt::UserRole + 2, r.display_name);

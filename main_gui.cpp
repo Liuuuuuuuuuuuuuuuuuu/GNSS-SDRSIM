@@ -11,6 +11,7 @@
 #include "gui/layout/map_control_panel_utils.h"
 #include "gui/layout/map_monitor_panels_utils.h"
 #include "gui/core/gui_i18n.h"
+#include "gui/core/gui_font_manager.h"
 #include "gui/core/gui_language_runtime_utils.h"
 #include "gui/map/map_osm_interaction_utils.h"
 #include "gui/map/map_osm_panel_utils.h"
@@ -49,6 +50,7 @@
 #include <QLinearGradient>
 #include <QListWidget>
 #include <QListWidgetItem>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
@@ -77,6 +79,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <functional>
 #include <mutex>
 #include <set>
 #include <string>
@@ -97,6 +100,20 @@ extern "C" {
 }
 
 namespace {
+
+static bool has_loaded_navigation_data() {
+  for (int prn = 0; prn < MAX_SAT; ++prn) {
+    if (eph[prn].prn != 0) {
+      return true;
+    }
+  }
+  for (int prn = 0; prn < GPS_EPH_SLOTS; ++prn) {
+    if (gps_eph[prn].prn != 0) {
+      return true;
+    }
+  }
+  return false;
+}
 
 #include "main_gui_state.inl"
 
@@ -526,11 +543,11 @@ protected:
         }
     }
 
+    draw_hover_help_overlay(p, win_width, win_height);
     if (tutorial_overlay_visible_ || dirty_intersects(bottom_right_rect) ||
         dirty_intersects(osm_rect) || dirty_intersects(map_rect)) {
       draw_tutorial_overlay(p, win_width, win_height);
     }
-    draw_hover_help_overlay(p, win_width, win_height);
   }
 
   void resizeEvent(QResizeEvent *event) override {
@@ -555,6 +572,50 @@ protected:
 
     if (event->button() == Qt::LeftButton) {
       const bool tutorial_was_visible = tutorial_overlay_visible_;
+
+      // TOC jump: when on the Contents page (step 0), check TOC buttons first
+      if (tutorial_overlay_visible_ && tutorial_step_ == 0) {
+        for (int i = 0; i < 5; ++i) {
+          if (!tutorial_toc_btn_rects_[i].isNull() &&
+              tutorial_toc_btn_rects_[i].contains(event->pos())) {
+            tutorial_step_ = tutorial_toc_btn_targets_[i];
+            tutorial_text_page_ = 0;
+            tutorial_anim_step_anchor_ = -1;
+            tutorial_spotlight_index_ = 0;
+            update();
+            event->accept();
+            return;
+          }
+        }
+      }
+
+      // CONTENTS button (steps 1-7): jump back to TOC
+      if (tutorial_overlay_visible_ && !tutorial_contents_btn_rect_.isNull() &&
+          tutorial_contents_btn_rect_.contains(event->pos())) {
+        tutorial_step_ = 0;
+        tutorial_text_page_ = 0;
+        tutorial_anim_step_anchor_ = -1;
+        tutorial_has_glow_ = false;
+        update();
+        event->accept();
+        return;
+      }
+
+      // Callout click → glow animation at UI element anchor
+      if (tutorial_overlay_visible_) {
+        for (int i = 0; i < (int)tutorial_callout_hit_boxes_.size(); ++i) {
+          if (tutorial_callout_hit_boxes_[i].contains(QPointF(event->pos()))) {
+            tutorial_has_glow_ = true;
+            tutorial_glow_anchor_ = tutorial_callout_hit_anchors_[i];
+            tutorial_glow_start_tp_ = std::chrono::steady_clock::now();
+            tutorial_glow_step_ = tutorial_step_;
+            update();
+            event->accept();
+            return;
+          }
+        }
+      }
+
       if (tutorial_handle_click(event->pos(), running_ui, tutorial_last_step(),
                                 tutorial_toggle_rect_, tutorial_prev_btn_rect_,
                                 tutorial_next_btn_rect_, tutorial_close_btn_rect_,
@@ -811,6 +872,22 @@ protected:
   void wheelEvent(QWheelEvent *event) override {
     QPoint p0 = event->position().toPoint();
 
+    // Tutorial page navigation by mouse wheel.
+    if (tutorial_overlay_visible_) {
+      const int delta = event->angleDelta().y();
+      if (delta > 0) {
+        tutorial_step_ = std::max(0, tutorial_step_ - 1);
+      } else if (delta < 0) {
+        tutorial_step_ = std::min(tutorial_last_step(), tutorial_step_ + 1);
+      }
+      tutorial_text_page_ = 0;
+      tutorial_anim_step_anchor_ = -1;
+      tutorial_has_glow_ = false;
+      update();
+      event->accept();
+      return;
+    }
+
     // Keep wheel scrolling inside search results from leaking into map zoom.
     if (search_results_list_ && search_results_list_->isVisible() &&
         search_results_list_->geometry().contains(p0)) {
@@ -833,6 +910,30 @@ protected:
       return;
     }
     QWidget::wheelEvent(event);
+  }
+
+  void keyPressEvent(QKeyEvent *event) override {
+    if (tutorial_overlay_visible_) {
+      if (event->key() == Qt::Key_Left) {
+        tutorial_step_ = std::max(0, tutorial_step_ - 1);
+        tutorial_text_page_ = 0;
+        tutorial_anim_step_anchor_ = -1;
+        tutorial_has_glow_ = false;
+        update();
+        event->accept();
+        return;
+      }
+      if (event->key() == Qt::Key_Right) {
+        tutorial_step_ = std::min(tutorial_last_step(), tutorial_step_ + 1);
+        tutorial_text_page_ = 0;
+        tutorial_anim_step_anchor_ = -1;
+        tutorial_has_glow_ = false;
+        update();
+        event->accept();
+        return;
+      }
+    }
+    QWidget::keyPressEvent(event);
   }
 
   void closeEvent(QCloseEvent *event) override {
@@ -1102,9 +1203,9 @@ private:
   // =========================================================
   bool dark_map_mode_ = false;
   GuiLanguage ui_language_ = GuiLanguage::English;
-  double control_text_scale_ = 1.0;
-  double control_caption_scale_ = 1.0;
-  double control_switch_option_scale_ = 1.0;
+  double control_text_scale_ = 1.0;          // Master = 100%
+  double control_caption_scale_ = 0.75;      // Caption = 75%
+  double control_switch_option_scale_ = 1.50; // Switch option = 150%
   double control_value_scale_ = 1.0;
   QColor control_accent_color_ = QColor("#00e5ff");
   QColor control_border_color_ = QColor("#b9cadf");
@@ -1134,10 +1235,20 @@ private:
   QRect search_return_btn_rect_;
   QRect osm_stop_btn_rect_; // <== 新增：用來記錄 OSM 上 STOP 按鈕的位置
   QRect osm_runtime_rect_;
+  std::vector<QRect> osm_status_badge_rects_;
   QRect tutorial_toggle_rect_;
   QRect tutorial_prev_btn_rect_;
   QRect tutorial_next_btn_rect_;
   QRect tutorial_close_btn_rect_;
+  QRect tutorial_toc_btn_rects_[5];
+  int tutorial_toc_btn_targets_[5] = {1, 3, 4, 5, 7};
+  QRect tutorial_contents_btn_rect_;
+  std::vector<QRectF> tutorial_callout_hit_boxes_;
+  std::vector<QPointF> tutorial_callout_hit_anchors_;
+  bool tutorial_has_glow_ = false;
+  QPointF tutorial_glow_anchor_;
+  int tutorial_glow_step_ = -1;
+  std::chrono::steady_clock::time_point tutorial_glow_start_tp_;
   QLabel *alert_overlay_ = nullptr;
   bool tutorial_enabled_ = false;       // default off
   bool tutorial_overlay_visible_ = false;

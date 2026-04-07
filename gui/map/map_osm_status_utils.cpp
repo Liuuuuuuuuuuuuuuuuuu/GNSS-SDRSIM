@@ -71,7 +71,8 @@ QStringList map_osm_status_lines(const QString &zoom_text,
 
 void map_osm_draw_status_badges(QPainter &p, const QRect &panel,
                                 const QRect &stop_btn_rect, bool running_ui,
-                                const QStringList &lines) {
+                                const QStringList &lines,
+                                std::vector<QRect> *badge_rects) {
   QFont prev_font = p.font();
   QFont badge_font = prev_font;
   if (running_ui) {
@@ -100,6 +101,9 @@ void map_osm_draw_status_badges(QPainter &p, const QRect &panel,
     QString elided =
         fm.elidedText(txt, Qt::ElideRight, std::max(40, badge_max_w - 2 * pad_x));
     QRect r(x, y, fm.horizontalAdvance(elided) + 2 * pad_x, line_h);
+    if (badge_rects) {
+      badge_rects->push_back(r);
+    }
     p.setRenderHint(QPainter::Antialiasing, true);
     p.setPen(QPen(QColor(120, 130, 145, 140), 1));
     p.setBrush(QColor(255, 255, 255, 210));

@@ -85,7 +85,20 @@ build/gui/layout/map_control_panel_utils.o: \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h \
  gui/core/control_state.h gui/core/gui_i18n.h gui/core/signal_snapshot.h \
  globals.h rinex.h gui/layout/control_layout.h \
- gui/control/control_paint.h gui/core/rf_mode_utils.h \
+ gui/control/control_paint.h gui/core/gui_font_manager.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h \
+ gui/core/rf_mode_utils.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QLinearGradient \
@@ -189,6 +202,19 @@ globals.h:
 rinex.h:
 gui/layout/control_layout.h:
 gui/control/control_paint.h:
+gui/core/gui_font_manager.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QFont:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h:
 gui/core/rf_mode_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:

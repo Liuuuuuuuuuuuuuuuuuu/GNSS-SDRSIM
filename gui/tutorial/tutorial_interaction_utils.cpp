@@ -10,7 +10,7 @@ bool tutorial_sync_control_panel_page(bool overlay_visible, int tutorial_step,
     return false;
   }
 
-  bool desired_detail = (tutorial_step >= 5);
+  bool desired_detail = (tutorial_step >= 6);
   if (*show_detailed_ctrl != desired_detail) {
     *show_detailed_ctrl = desired_detail;
     return true;
