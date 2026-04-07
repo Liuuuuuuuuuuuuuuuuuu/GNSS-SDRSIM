@@ -147,6 +147,8 @@ build/gui/nfz/dji_nfz.o: gui/nfz/dji_nfz.cpp gui/nfz/dji_nfz.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qjsonarray.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QDebug \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qdebug.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QColor \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QPainterPath \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainterpath.h
 gui/nfz/dji_nfz.h:
@@ -298,5 +300,7 @@ gui/nfz/dji_nfz.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qjsonarray.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QDebug:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qdebug.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QColor:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QPainterPath:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainterpath.h:

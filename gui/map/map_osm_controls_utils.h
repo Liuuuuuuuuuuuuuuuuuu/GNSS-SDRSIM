@@ -20,6 +20,7 @@ struct MapOsmControlsInput {
   QRect search_box_rect;
   bool tx_active = false;
   long long elapsed_sec = 0;
+    bool force_stop_preview = false;
 };
 
 struct MapOsmControlsState {
@@ -31,6 +32,7 @@ struct MapOsmControlsState {
   QRect search_return_btn_rect;
   QRect osm_stop_btn_rect;
   QRect osm_runtime_rect;
+  std::vector<QRect> nfz_legend_row_rects;
 };
 
 void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,

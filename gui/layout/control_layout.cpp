@@ -151,6 +151,13 @@ void compute_control_layout(int win_width, int win_height, ControlLayout *lo, bo
     int action_h = clamp_int((int)std::lround((double)lo->panel.h * (portrait ? 0.070 : 0.062)), 24, 38);
     int action_y = lo->panel.y + lo->panel.h - pad_y - action_h;
     int exit_w = clamp_int((int)std::lround((double)lo->panel.w * (portrait ? 0.17 : 0.16)), 60, 120);
+    // Narrow landscape + Detail: reduce action button footprint to avoid squeezing
+    // FORMAT / MODE / MEO rows near the bottom.
+    if (detailed && !portrait && lo->panel.w < 520) {
+        action_h = clamp_int((int)std::lround((double)action_h * 0.86), 20, 34);
+        exit_w = clamp_int((int)std::lround((double)exit_w * 0.88), 54, 108);
+        action_y = lo->panel.y + lo->panel.h - pad_y - action_h;
+    }
     int action_gap = clamp_int((int)std::lround((double)lo->panel.w / (portrait ? 54.0 : 60.0)), 4, 12);
     int frame_pad_x = 6;
     

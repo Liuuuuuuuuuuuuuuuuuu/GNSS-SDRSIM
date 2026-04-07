@@ -79,6 +79,7 @@ struct MapOsmPanelInput {
   bool tx_active = false;
   long long elapsed_sec = 0;
   QString plan_status;
+    bool force_stop_preview = false;
 };
 
 struct MapOsmPanelState {
@@ -90,6 +91,8 @@ struct MapOsmPanelState {
   QRect search_return_btn_rect;
   QRect osm_stop_btn_rect;
   QRect osm_runtime_rect;
+  std::vector<QRect> status_badge_rects;
+  std::vector<QRect> nfz_legend_row_rects;
 };
 
 void map_draw_osm_panel(QPainter &p, const MapOsmPanelInput &in,

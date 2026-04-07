@@ -93,7 +93,8 @@ void map_draw_satellite_layer(QPainter &p, const QRect &map_rect,
                                           label_rect.width()));
   }
 
-  if (receiver_valid) {
+  const bool mode_jam = (ctrl.interference_selection == 1);
+  if (receiver_valid && !mode_jam) {
     int rx_x = map_rect.x() + lon_to_x(receiver_lon_deg, map_rect.width());
     int rx_y = map_rect.y() + lat_to_y(receiver_lat_deg, map_rect.height());
     p.setPen(QPen(color_rx, 2));

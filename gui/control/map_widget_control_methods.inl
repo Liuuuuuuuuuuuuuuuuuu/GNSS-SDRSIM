@@ -13,7 +13,8 @@ void MapWidget::refresh_tick_timer() {
     }
 
     if (tutorial_overlay_visible_) {
-      interval_ms = 40;
+      // Keep tutorial animation smooth and avoid stale partial redraws.
+      interval_ms = 16;
     } else if (running_ui) {
       interval_ms = 60;
     }
@@ -63,18 +64,14 @@ void MapWidget::open_control_style_dialog() {
   const QColor original_border = control_border_color_;
   const QColor original_text = control_text_color_;
   const QColor original_dim = control_dim_text_color_;
+  const auto tr = [&](const char *key) { return gui_i18n_text(ui_language_, key); };
 
   QDialog dlg(this);
-  dlg.setWindowTitle(ui_language_ == GuiLanguage::ZhTw
-                         ? QString::fromUtf8("Signal Setting 樣貌設定")
-                         : QString("Signal Setting Appearance"));
+  dlg.setWindowTitle(tr("style.dialog.title"));
   dlg.setModal(true);
 
   auto *layout = new QFormLayout(&dlg);
-  auto *live_preview_cb = new QCheckBox(
-      ui_language_ == GuiLanguage::ZhTw ? QString::fromUtf8("即時預覽")
-                                        : QString("Live Preview"),
-      &dlg);
+  auto *live_preview_cb = new QCheckBox(tr("style.live_preview"), &dlg);
   live_preview_cb->setChecked(true);
 
   auto make_scale_row = [&](int init_percent) {
@@ -116,7 +113,7 @@ void MapWidget::open_control_style_dialog() {
     auto *quick_layout = new QHBoxLayout(quick_row);
     quick_layout->setContentsMargins(0, 0, 0, 0);
     quick_layout->setSpacing(4);
-    const int quick_values[] = {100, 150, 200, 300, 500};
+    const int quick_values[] = {75, 100, 125, 150, 200};
     for (int v : quick_values) {
       auto *btn = new QPushButton(QString("%1%").arg(v), quick_row);
       btn->setAutoDefault(false);
@@ -144,24 +141,13 @@ void MapWidget::open_control_style_dialog() {
       make_scale_row((int)std::lround(control_value_scale_ * 100.0));
 
   auto *accent_btn =
-      new QPushButton(ui_language_ == GuiLanguage::ZhTw
-                          ? QString::fromUtf8("主色")
-                          : QString("Accent"),
-                      &dlg);
+      new QPushButton(tr("style.accent"), &dlg);
   auto *border_btn =
-      new QPushButton(ui_language_ == GuiLanguage::ZhTw
-                          ? QString::fromUtf8("邊框")
-                          : QString("Border"),
-                      &dlg);
+      new QPushButton(tr("style.border"), &dlg);
   auto *text_btn =
-      new QPushButton(ui_language_ == GuiLanguage::ZhTw
-                          ? QString::fromUtf8("主要文字")
-                          : QString("Text"),
-                      &dlg);
-  auto *dim_btn = new QPushButton(
-      ui_language_ == GuiLanguage::ZhTw ? QString::fromUtf8("次要文字")
-                                        : QString("Dim Text"),
-      &dlg);
+      new QPushButton(tr("style.text_primary"), &dlg);
+    auto *dim_btn = new QPushButton(tr("style.text_dim"), &dlg);
+    auto *custom_btn = new QPushButton(tr("style.custom_color"), &dlg);
 
   QColor pending_accent = control_accent_color_;
   QColor pending_border = control_border_color_;
@@ -232,29 +218,28 @@ void MapWidget::open_control_style_dialog() {
   });
 
   connect(accent_btn, &QPushButton::clicked, &dlg, [&]() {
-    pick_color(pending_accent, accent_btn,
-               ui_language_ == GuiLanguage::ZhTw ? QString::fromUtf8("選擇主題色")
-                                                 : QString("Select Accent Color"));
+    pick_color(pending_accent, accent_btn, tr("style.pick_accent"));
     trigger_live_preview();
   });
   connect(border_btn, &QPushButton::clicked, &dlg, [&]() {
-    pick_color(pending_border, border_btn,
-               ui_language_ == GuiLanguage::ZhTw ? QString::fromUtf8("選擇邊框顏色")
-                                                 : QString("Select Border Color"));
+    pick_color(pending_border, border_btn, tr("style.pick_border"));
     trigger_live_preview();
   });
   connect(text_btn, &QPushButton::clicked, &dlg, [&]() {
-    pick_color(pending_text, text_btn,
-               ui_language_ == GuiLanguage::ZhTw
-                   ? QString::fromUtf8("選擇主要文字顏色")
-                   : QString("Select Text Color"));
+    pick_color(pending_text, text_btn, tr("style.pick_text_primary"));
     trigger_live_preview();
   });
   connect(dim_btn, &QPushButton::clicked, &dlg, [&]() {
-    pick_color(pending_dim, dim_btn,
-               ui_language_ == GuiLanguage::ZhTw
-                   ? QString::fromUtf8("選擇次要文字顏色")
-                   : QString("Select Dim Text Color"));
+    pick_color(pending_dim, dim_btn, tr("style.pick_text_dim"));
+    trigger_live_preview();
+  });
+
+  connect(custom_btn, &QPushButton::clicked, &dlg, [&]() {
+    QColor picked = QColorDialog::getColor(
+        pending_accent, &dlg, tr("style.pick_custom"));
+    if (!picked.isValid()) return;
+    pending_accent = picked;
+    apply_btn_color(accent_btn, pending_accent);
     trigger_live_preview();
   });
 
@@ -265,15 +250,13 @@ void MapWidget::open_control_style_dialog() {
   color_layout->addWidget(border_btn);
   color_layout->addWidget(text_btn);
   color_layout->addWidget(dim_btn);
+  color_layout->addWidget(custom_btn);
 
-  auto *reset_btn = new QPushButton(ui_language_ == GuiLanguage::ZhTw
-                                        ? QString::fromUtf8("恢復預設")
-                                        : QString("Reset Defaults"),
-                                    &dlg);
+  auto *reset_btn = new QPushButton(tr("style.reset_defaults"), &dlg);
   connect(reset_btn, &QPushButton::clicked, &dlg, [&]() {
     master_pair.second->setValue(100);
-    caption_pair.second->setValue(100);
-    switch_pair.second->setValue(100);
+    caption_pair.second->setValue(75);
+    switch_pair.second->setValue(150);
     value_pair.second->setValue(100);
     pending_accent = QColor("#00e5ff");
     pending_border = QColor("#b9cadf");
@@ -286,22 +269,14 @@ void MapWidget::open_control_style_dialog() {
     trigger_live_preview();
   });
 
-  layout->addRow(ui_language_ == GuiLanguage::ZhTw ? QString::fromUtf8("整體文字")
-                                                    : QString("Master Text"),
+    layout->addRow(tr("style.row.master_text"),
                  master_pair.first);
-  layout->addRow(ui_language_ == GuiLanguage::ZhTw ? QString::fromUtf8("Caption 文字")
-                                                    : QString("Caption Text"),
+    layout->addRow(tr("style.row.caption_text"),
                  caption_pair.first);
-  layout->addRow(
-      ui_language_ == GuiLanguage::ZhTw ? QString::fromUtf8("Switch 選項文字")
-                                        : QString("Switch Option Text"),
-      switch_pair.first);
-  layout->addRow(ui_language_ == GuiLanguage::ZhTw
-                     ? QString::fromUtf8("輸入框數值文字")
-                     : QString("Value Text"),
+    layout->addRow(tr("style.row.switch_option_text"), switch_pair.first);
+    layout->addRow(tr("style.row.value_text"),
                  value_pair.first);
-  layout->addRow(ui_language_ == GuiLanguage::ZhTw ? QString::fromUtf8("顏色")
-                                                    : QString("Colors"),
+    layout->addRow(tr("style.row.colors"),
                  color_row);
   layout->addRow(QString(), live_preview_cb);
   layout->addRow(QString(), reset_btn);

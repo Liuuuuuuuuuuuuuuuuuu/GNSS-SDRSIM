@@ -3,6 +3,9 @@
 #include "gui/layout/control_layout.h"
 #include "gui/control/control_paint.h"
 #include "gui/core/gui_i18n.h"
+#include "gui/core/gui_font_manager.h"
+
+#include <QPainterPath>
 
 #include <QFontMetrics>
 #include <QPen>
@@ -90,18 +93,63 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
 
   out->tutorial_toggle_rect = QRect();
   if (!in.running_ui) {
-    out->tutorial_toggle_rect = QRect(col_right_x, row2_y, btn_w, btn_h);
-    Rect rr = qrect_to_rect(out->tutorial_toggle_rect);
-    if (in.tutorial_enabled) {
-      control_draw_button_filled(p, rr, btn_tutorial, btn_tutorial,
-                                 QColor(8, 12, 18),
-                                 gui_i18n_text(in.language, "osm.guide_on").toUtf8().constData());
-    } else {
-      control_draw_button(p, rr, btn_border, btn_text,
-                          gui_i18n_text(in.language, "osm.guide_off").toUtf8().constData());
-    }
-  }
+    const int guide_w = 30;
+    const int guide_x = col_right_x + btn_w - guide_w - 4;  // align to right edge with small margin
+    const QRect guide_r(guide_x, row2_y, guide_w, btn_h);
+    out->tutorial_toggle_rect = guide_r;
 
+    p.save();
+    p.setRenderHint(QPainter::Antialiasing, true);
+
+    // ── Button base (rounded rect) ──────────────────────────────────────────
+    const QColor bg_fill  = in.tutorial_enabled ? QColor(255, 228, 84, 245)
+                                                : QColor(20, 28, 40, 200);
+    const QColor bg_border = in.tutorial_enabled ? QColor(255, 252, 170)
+                                                 : QColor(232, 210, 90, 190);
+    p.setPen(QPen(bg_border, 1.2));
+    p.setBrush(bg_fill);
+    p.drawRoundedRect(guide_r, 8, 8);
+
+    // ── Lightbulb icon only (no label text) ─────────────────────────────────
+    const double cx = guide_r.x() + guide_r.width() * 0.5;
+    const double cy = guide_r.y() + guide_r.height() * 0.5;
+    const double br = 8.0;   // bulb radius
+
+    const QColor bulb_col = in.tutorial_enabled ? QColor(255, 252, 186)
+                           : QColor(180, 200, 220, 120);
+    const QColor base_col = in.tutorial_enabled ? QColor(238, 192, 40)
+                           : QColor(120, 140, 160, 140);
+
+    // Outer glow (ON state only)
+    if (in.tutorial_enabled) {
+      p.setPen(Qt::NoPen);
+      p.setBrush(QColor(255, 243, 120, 92));
+      p.drawEllipse(QPointF(cx, cy - 1.5), br + 6, br + 6);
+    }
+
+    // Bulb circle
+    p.setPen(QPen(base_col, 1.2));
+    p.setBrush(bulb_col);
+    p.drawEllipse(QPointF(cx, cy - 1.5), br, br);
+
+    // Filament (two arcs simulating a V inside the bulb)
+    if (in.tutorial_enabled) {
+      p.setPen(QPen(QColor(255, 200, 60), 1.0));
+    } else {
+      p.setPen(QPen(QColor(100, 120, 140, 160), 0.8));
+    }
+    p.setBrush(Qt::NoBrush);
+    p.drawLine(QPointF(cx - 2, cy - 3.5), QPointF(cx,     cy - 0.5));
+    p.drawLine(QPointF(cx,     cy - 0.5), QPointF(cx + 2, cy - 3.5));
+
+    // Base lines (below bulb)
+    p.setPen(QPen(base_col, 1.2));
+    const double base_y = cy - 1.5 + br;
+    p.drawLine(QPointF(cx - 3, base_y + 1.5), QPointF(cx + 3, base_y + 1.5));
+    p.drawLine(QPointF(cx - 2, base_y + 3.0), QPointF(cx + 2, base_y + 3.0));
+
+    p.restore();
+  }
   out->search_return_btn_rect = QRect();
   if (in.show_search_return) {
     const QRect sb = in.search_box_rect.isEmpty()
@@ -118,8 +166,12 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
                                gui_i18n_text(in.language, "osm.return").toUtf8().constData());
   }
 
-  const bool show_tutorial_stop_preview =
-      in.tutorial_overlay_visible && (in.tutorial_step == 13) && !in.running_ui;
+      // Tutorial steps are zero-based. Map lower-half chapter may appear on step 1 or 2
+      // depending on current guide flow mode, so allow both for stable preview.
+    const bool show_tutorial_stop_preview =
+        (in.force_stop_preview ||
+         (in.tutorial_overlay_visible &&
+          (in.tutorial_step == 1 || in.tutorial_step == 2))) && !in.running_ui;
   if (in.running_ui || show_tutorial_stop_preview) {
     QFontMetrics stop_fm(p.font());
     QByteArray stop_label = gui_i18n_text(in.language, "osm.stop").toUtf8();
@@ -135,7 +187,7 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
     control_draw_button_filled(p, rr, btn_stop, btn_stop, QColor(8, 12, 18),
                                kStopBtnLabel);
 
-    if (in.running_ui) {
+    if (in.running_ui || show_tutorial_stop_preview) {
       int hh = (int)(in.elapsed_sec / 3600);
       int mm = (int)((in.elapsed_sec % 3600) / 60);
       int ss = (int)(in.elapsed_sec % 60);
@@ -147,22 +199,24 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
               .arg(hh, 2, 10, QChar('0'))
               .arg(mm, 2, 10, QChar('0'))
               .arg(ss, 2, 10, QChar('0'));
+      if (show_tutorial_stop_preview) {
+        run_txt = QString("%1 - 00:00:00")
+                      .arg(gui_i18n_text(in.language, "osm.run_time"));
+      }
 
       QFont orig_font = p.font();
-      QFont time_font = orig_font;
-      time_font.setFamily("Monospace");
-      time_font.setPointSize(24);
+      QFont time_font = gui_font_mono(24);
       time_font.setBold(true);
       time_font.setLetterSpacing(QFont::PercentageSpacing, 110);
       p.setFont(time_font);
 
-        const QString init_txt =
+      const QString init_txt =
           QString("%1 - 00:00:00").arg(gui_i18n_text(in.language, "osm.init_time"));
-        const QString run_txt_sample =
+      const QString run_txt_sample =
           QString("%1 - 00:00:00").arg(gui_i18n_text(in.language, "osm.run_time"));
-        int txt_w = p.fontMetrics().horizontalAdvance(run_txt);
-        txt_w = std::max(txt_w, p.fontMetrics().horizontalAdvance(init_txt));
-        txt_w = std::max(txt_w, p.fontMetrics().horizontalAdvance(run_txt_sample));
+      int txt_w = p.fontMetrics().horizontalAdvance(run_txt);
+      txt_w = std::max(txt_w, p.fontMetrics().horizontalAdvance(init_txt));
+      txt_w = std::max(txt_w, p.fontMetrics().horizontalAdvance(run_txt_sample));
       int txt_h = p.fontMetrics().height();
       QRect time_rect(in.panel.x() + (in.panel.width() - txt_w) / 2 - 20,
                       stop_y - txt_h - 50, txt_w + 40, txt_h + 20);
@@ -185,33 +239,66 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
   }
 
   if (in.dji_on) {
-    int leg_w = 110, leg_h = 52;
+    int leg_w = 210, leg_h = 136;
     int leg_x = in.panel.x() + in.panel.width() - leg_w - 10;
     int leg_y = in.panel.y() + in.panel.height() - leg_h - 30;
 
     p.setRenderHint(QPainter::Antialiasing, true);
-    p.setPen(QPen(QColor(80, 100, 120, 150), 1));
-    p.setBrush(QColor(10, 20, 35, 180));
-    p.drawRect(leg_x, leg_y, leg_w, leg_h);
+    p.setPen(QPen(QColor(120, 145, 172, 180), 1.2));
+    p.setBrush(QColor(10, 20, 35, 196));
+    p.drawRoundedRect(leg_x, leg_y, leg_w, leg_h, 6, 6);
 
     QFont old_font = p.font();
+    QFont title_font = old_font;
+    title_font.setBold(true);
+    title_font.setPointSize(old_font.pointSize() > 0 ? old_font.pointSize() : 10);
+    p.setFont(title_font);
+    p.setPen(QColor("#dbeafe"));
+    p.drawText(QRect(leg_x + 10, leg_y + 6, leg_w - 20, 18),
+               Qt::AlignLeft | Qt::AlignVCenter,
+               gui_i18n_text(in.language, "osm.nfz_on"));
+
     QFont leg_font = old_font;
-    leg_font.setPointSize(old_font.pointSize() > 0 ? old_font.pointSize() - 1 : 9);
+    leg_font.setPointSize(old_font.pointSize() > 0 ? old_font.pointSize() : 10);
     p.setFont(leg_font);
 
-    p.setPen(QPen(QColor(255, 0, 255, 240), 2));
-    p.setBrush(QColor(255, 0, 255, 80));
-    p.drawEllipse(leg_x + 10, leg_y + 14, 10, 10);
+    p.setPen(QPen(QColor(220, 38, 38, 235), 2));
+    p.setBrush(QColor(220, 38, 38, 88));
+    p.drawEllipse(leg_x + 14, leg_y + 34, 12, 12);
     p.setPen(QColor("#f1f7ff"));
-    p.drawText(leg_x + 28, leg_y + 24,
-           gui_i18n_text(in.language, "osm.legend_restricted"));
+    p.drawText(leg_x + 34, leg_y + 45,
+           gui_i18n_text(in.language, "osm.legend_restricted_core"));
 
-    p.setPen(QPen(QColor(59, 130, 246, 240), 2));
-    p.setBrush(QColor(59, 130, 246, 60));
-    p.drawEllipse(leg_x + 10, leg_y + 34, 10, 10);
+    p.setPen(QPen(QColor(217, 119, 6, 230), 2));
+    p.setBrush(QColor(245, 158, 11, 75));
+    p.drawEllipse(leg_x + 14, leg_y + 57, 12, 12);
     p.setPen(QColor("#f1f7ff"));
-    p.drawText(leg_x + 28, leg_y + 44,
-           gui_i18n_text(in.language, "osm.legend_auth_warn"));
+    p.drawText(leg_x + 34, leg_y + 68,
+           gui_i18n_text(in.language, "osm.legend_warning"));
+
+    p.setPen(QPen(QColor(37, 99, 235, 230), 2));
+    p.setBrush(QColor(59, 130, 246, 60));
+    p.drawEllipse(leg_x + 14, leg_y + 80, 12, 12);
+    p.setPen(QColor("#f1f7ff"));
+    p.drawText(leg_x + 34, leg_y + 91,
+           gui_i18n_text(in.language, "osm.legend_authorization"));
+
+    p.setPen(QPen(QColor(241, 245, 249, 230), 2));
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(leg_x + 14, leg_y + 100, 12, 12, 3, 3);
+    p.setPen(QColor("#f1f7ff"));
+    p.drawText(leg_x + 34, leg_y + 111,
+           gui_i18n_text(in.language, "osm.legend_service_white"));
+
+    if (out) {
+      out->nfz_legend_row_rects.clear();
+      const int row_x = leg_x + 10;
+      const int row_w = leg_w - 20;
+      out->nfz_legend_row_rects.push_back(QRect(row_x, leg_y + 30, row_w, 22));  // restricted
+      out->nfz_legend_row_rects.push_back(QRect(row_x, leg_y + 53, row_w, 22));  // warning
+      out->nfz_legend_row_rects.push_back(QRect(row_x, leg_y + 76, row_w, 22));  // auth_warn
+      out->nfz_legend_row_rects.push_back(QRect(row_x, leg_y + 96, row_w, 22));  // service_white
+    }
 
     p.setFont(old_font);
     p.setRenderHint(QPainter::Antialiasing, false);

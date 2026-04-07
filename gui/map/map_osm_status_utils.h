@@ -6,6 +6,8 @@
 #include <QString>
 #include <QStringList>
 
+#include <vector>
+
 #include "gui/core/gui_i18n.h"
 
 QString map_osm_current_text(bool receiver_valid, double receiver_lat,
@@ -23,6 +25,7 @@ QStringList map_osm_status_lines(const QString &zoom_text,
                                  GuiLanguage language);
 void map_osm_draw_status_badges(QPainter &p, const QRect &panel,
                                 const QRect &stop_btn_rect, bool running_ui,
-                                const QStringList &lines);
+                                const QStringList &lines,
+                                std::vector<QRect> *badge_rects = nullptr);
 
 #endif

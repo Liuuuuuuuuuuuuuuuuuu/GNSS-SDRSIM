@@ -20,12 +20,23 @@ struct DjiLonLat {
     double lat;
 };
 
+// 支援複雜多邊形（含內環/空洞）的環物件
+struct DjiPolygonRing {
+    std::vector<DjiLonLat> points;  // 環的頂點序列
+    bool is_outer = true;            // true=外環，false=內環（洞）
+};
+
 // 單一禁航區結構
 struct DjiNfzZone {
     QString name;
     DjiNfzType type;
     int level;
-    std::vector<DjiLonLat> polygon;
+    QString color_hex;
+    
+    // POLYGON 類型：支援多邊形與內環（洞）
+    std::vector<DjiPolygonRing> rings;  // rings[0] = 外環，rings[1..n] = 內環
+    
+    // CIRCLE 類型
     double center_lat;
     double center_lon;
     double radius_m;

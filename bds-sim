@@ -10,18 +10,18 @@ else
   ROOT_DIR="$SCRIPT_DIR"
 fi
 BIN_DIR="bin"
-REBUILD_SCRIPT="scripts/rebuild-local.sh"
+REBUILD_SCRIPT="rebuild-local.sh"
 FAT_BIN="$ROOT_DIR/$BIN_DIR/bds-sim-fat"
 
-PORTABLE_LIB_DIRS=""
+RUNTIME_LIB_DIRS=""
 if [ -d "$ROOT_DIR/lib" ]; then
-  PORTABLE_LIB_DIRS="$ROOT_DIR/lib"
+  RUNTIME_LIB_DIRS="$ROOT_DIR/lib"
 fi
 if [ -d "$ROOT_DIR/lib64" ]; then
-  PORTABLE_LIB_DIRS="${PORTABLE_LIB_DIRS:+$PORTABLE_LIB_DIRS:}$ROOT_DIR/lib64"
+  RUNTIME_LIB_DIRS="${RUNTIME_LIB_DIRS:+$RUNTIME_LIB_DIRS:}$ROOT_DIR/lib64"
 fi
-if [ -n "$PORTABLE_LIB_DIRS" ]; then
-  export LD_LIBRARY_PATH="$PORTABLE_LIB_DIRS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+if [ -n "$RUNTIME_LIB_DIRS" ]; then
+  export LD_LIBRARY_PATH="$RUNTIME_LIB_DIRS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 fi
 
 print_rebuild_hint() {

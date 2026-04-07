@@ -207,33 +207,41 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
   if (std::strcmp(key, "osm.init_time") == 0) {
     return zh ? QString::fromUtf8("初始化時間") : QString("INIT TIME");
   }
-  if (std::strcmp(key, "osm.legend_restricted") == 0) {
-    return zh ? QString::fromUtf8("限制區") : QString("Restricted");
+  if (std::strcmp(key, "osm.legend_restricted_core") == 0) {
+    return zh ? QString::fromUtf8("核心禁飛（紅）") : QString("Core Restricted (Red)");
   }
-  if (std::strcmp(key, "osm.legend_auth_warn") == 0) {
-    return zh ? QString::fromUtf8("授權/警示") : QString("Auth/Warn");
+  if (std::strcmp(key, "osm.legend_warning") == 0) {
+    return zh ? QString::fromUtf8("警示/限高（黃）") : QString("Warning / Alt-Limit (Yellow)");
+  }
+  if (std::strcmp(key, "osm.legend_authorization") == 0) {
+    return zh ? QString::fromUtf8("授權區（藍）") : QString("Authorization (Blue)");
+  }
+  if (std::strcmp(key, "osm.legend_service_white") == 0) {
+    return zh ? QString::fromUtf8("服務區（白框）") : QString("Service Zone (White Outline)");
   }
   if (std::strcmp(key, "osm.lang_btn") == 0) {
     return zh ? QString::fromUtf8("語言:中文") : QString("LANG:EN");
   }
 
   if (std::strcmp(key, "status.current") == 0) {
-    return zh ? QString::fromUtf8("目前 %1, %2") : QString("Current %1, %2");
+    return zh ? QString::fromUtf8("接收機座標 %1, %2")
+              : QString("Receiver %1, %2");
   }
   if (std::strcmp(key, "status.current_na") == 0) {
-    return zh ? QString::fromUtf8("目前 N/A") : QString("Current N/A");
+    return zh ? QString::fromUtf8("接收機座標 N/A")
+              : QString("Receiver N/A");
   }
   if (std::strcmp(key, "status.start_llh") == 0) {
-    return zh ? QString::fromUtf8("起始 LLH %1, %2, %3 | %4")
-              : QString("Start LLH %1, %2, %3 | %4");
+    return zh ? QString::fromUtf8("任務起點 LLH %1, %2, %3m｜%4")
+              : QString("Mission Start LLH %1, %2, %3m | %4");
   }
   if (std::strcmp(key, "status.zoom") == 0) {
-    return zh ? QString::fromUtf8("OpenStreetMap（拖曳平移、滾輪縮放）| 縮放 %1")
-              : QString("OpenStreetMap (drag to pan, wheel to zoom) | Zoom %1");
+    return zh ? QString::fromUtf8("地圖操作：拖曳平移、滾輪縮放、右鍵確認路徑｜倍率 x%1")
+              : QString("Map Controls: drag-pan, wheel-zoom, right-click confirm | Scale x%1");
   }
   if (std::strcmp(key, "status.new_user_tip") == 0) {
-    return zh ? QString::fromUtf8("新手提示：點右上角導覽開關可開啟逐步教學")
-              : QString("New user tip: click GUIDE OFF at top-right to open step-by-step tutorial");
+    return zh ? QString::fromUtf8("快速上手：先設定起點，再點右上 GUIDE 進入互動導覽")
+              : QString("Quick Start: set a start point, then tap GUIDE for interactive walkthrough");
   }
 
   if (std::strcmp(key, "monitor.spectrum") == 0) {
@@ -247,6 +255,136 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
   }
   if (std::strcmp(key, "monitor.constellation") == 0) {
     return zh ? QString::fromUtf8("訊號星座圖") : QString("Signal Constellation");
+  }
+
+  if (std::strcmp(key, "style.dialog.title") == 0) {
+    return zh ? QString::fromUtf8("Signal Setting 樣貌設定")
+              : QString("Signal Setting Appearance");
+  }
+  if (std::strcmp(key, "style.live_preview") == 0) {
+    return zh ? QString::fromUtf8("即時預覽") : QString("Live Preview");
+  }
+  if (std::strcmp(key, "style.accent") == 0) {
+    return zh ? QString::fromUtf8("主色 (滑桿/高亮)")
+              : QString("Accent (Slider/Highlight)");
+  }
+  if (std::strcmp(key, "style.border") == 0) {
+    return zh ? QString::fromUtf8("邊框 (外框/分隔線)")
+              : QString("Border (Frames/Dividers)");
+  }
+  if (std::strcmp(key, "style.text_primary") == 0) {
+    return zh ? QString::fromUtf8("主要文字 (標題/內容)")
+              : QString("Text (Primary)");
+  }
+  if (std::strcmp(key, "style.text_dim") == 0) {
+    return zh ? QString::fromUtf8("次要文字 (停用/註解)")
+              : QString("Dim Text (Disabled/Secondary)");
+  }
+  if (std::strcmp(key, "style.custom_color") == 0) {
+    return zh ? QString::fromUtf8("Custom 顏色...") : QString("Custom Color...");
+  }
+  if (std::strcmp(key, "style.pick_accent") == 0) {
+    return zh ? QString::fromUtf8("選擇主題色") : QString("Select Accent Color");
+  }
+  if (std::strcmp(key, "style.pick_border") == 0) {
+    return zh ? QString::fromUtf8("選擇邊框顏色") : QString("Select Border Color");
+  }
+  if (std::strcmp(key, "style.pick_text_primary") == 0) {
+    return zh ? QString::fromUtf8("選擇主要文字顏色")
+              : QString("Select Text Color");
+  }
+  if (std::strcmp(key, "style.pick_text_dim") == 0) {
+    return zh ? QString::fromUtf8("選擇次要文字顏色")
+              : QString("Select Dim Text Color");
+  }
+  if (std::strcmp(key, "style.pick_custom") == 0) {
+    return zh ? QString::fromUtf8("選擇自訂顏色")
+              : QString("Select Custom Color");
+  }
+  if (std::strcmp(key, "style.reset_defaults") == 0) {
+    return zh ? QString::fromUtf8("恢復預設") : QString("Reset Defaults");
+  }
+  if (std::strcmp(key, "style.row.master_text") == 0) {
+    return zh ? QString::fromUtf8("整體文字") : QString("Master Text");
+  }
+  if (std::strcmp(key, "style.row.caption_text") == 0) {
+    return zh ? QString::fromUtf8("Caption 文字") : QString("Caption Text");
+  }
+  if (std::strcmp(key, "style.row.switch_option_text") == 0) {
+    return zh ? QString::fromUtf8("Switch 選項文字")
+              : QString("Switch Option Text");
+  }
+  if (std::strcmp(key, "style.row.value_text") == 0) {
+    return zh ? QString::fromUtf8("輸入框數值文字") : QString("Value Text");
+  }
+  if (std::strcmp(key, "style.row.colors") == 0) {
+    return zh ? QString::fromUtf8("顏色") : QString("Colors");
+  }
+
+  if (std::strcmp(key, "tutorial.flow.title.0") == 0) {
+    return zh ? QString::fromUtf8("導覽總覽") : QString("Guide Overview");
+  }
+  if (std::strcmp(key, "tutorial.flow.title.1") == 0) {
+    return zh ? QString::fromUtf8("地圖操作與圖層") : QString("Map Controls & Layers");
+  }
+  if (std::strcmp(key, "tutorial.flow.title.2") == 0) {
+    return zh ? QString::fromUtf8("狀態列與任務資訊") : QString("Status & Mission Info");
+  }
+  if (std::strcmp(key, "tutorial.flow.title.3") == 0) {
+    return zh ? QString::fromUtf8("星下點") : QString("Skyplot");
+  }
+  if (std::strcmp(key, "tutorial.flow.title.4") == 0) {
+    return zh ? QString::fromUtf8("四波形") : QString("Four Waveforms");
+  }
+  if (std::strcmp(key, "tutorial.flow.title.5") == 0) {
+    return QString("Simple Page Buttons (1/2)");
+  }
+  if (std::strcmp(key, "tutorial.flow.title.6") == 0) {
+    return QString("Simple Page Buttons (2/2)");
+  }
+  if (std::strcmp(key, "tutorial.flow.title.7") == 0) {
+    return QString("Detail Page Buttons (1/2)");
+  }
+  if (std::strcmp(key, "tutorial.flow.title.8") == 0) {
+    return QString("Detail Page Buttons (2/2)");
+  }
+
+  if (std::strcmp(key, "tutorial.flow.body.0") == 0) {
+    return zh
+               ? QString::fromUtf8("這份導覽聚焦在地圖任務流程。\n你可以先從目錄直接跳章，或用 NEXT 依序完成一輪。")
+               : QString("This guide focuses on map mission workflow.\nJump by section from the overview, or use NEXT for a full pass.");
+  }
+  if (std::strcmp(key, "tutorial.flow.body.1") == 0) {
+    return zh ? QString::fromUtf8("本節介紹地圖上方的核心控制：搜尋、NFZ、明暗模式、語言與 GUIDE。\n先熟悉這一排，後續操作會快很多。")
+              : QString("This section covers the top control row: Search, NFZ, theme, language, and GUIDE.\nMaster these first to speed up every mission.");
+  }
+  if (std::strcmp(key, "tutorial.flow.body.2") == 0) {
+    return zh ? QString::fromUtf8("本節介紹右下狀態徽章與任務資訊列：倍率、提示、路徑狀態與座標。\n排錯與確認任務是否生效，主要都看這裡。")
+              : QString("This section explains the bottom-right badges: scale, tips, path status, and coordinates.\nUse this area to verify mission state and troubleshoot quickly.");
+  }
+  if (std::strcmp(key, "tutorial.flow.body.3") == 0) {
+    return zh ? QString::fromUtf8("此環節說明星下點顯示，包含 G 與 C 衛星。")
+              : QString("This part explains skyplot with G and C satellites.");
+  }
+  if (std::strcmp(key, "tutorial.flow.body.4") == 0) {
+    return zh ? QString::fromUtf8("此環節說明四個波形面板的觀察重點。")
+              : QString("This part explains the four waveform panels.");
+  }
+  if (std::strcmp(key, "tutorial.flow.body.5") == 0) {
+    return zh ? QString::fromUtf8("此環節說明 Simple 頁面上半部與頁籤的 6 個重點按鈕。")
+              : QString("This part explains 6 key controls in the upper and tab areas of the Simple page.");
+  }
+  if (std::strcmp(key, "tutorial.flow.body.6") == 0) {
+    return zh ? QString::fromUtf8("此環節說明 Simple 頁面下半部的 5 個重點控制。")
+              : QString("This part explains 5 key controls in the lower area of the Simple page.");
+  }
+  if (std::strcmp(key, "tutorial.flow.body.7") == 0) {
+    return zh ? QString::fromUtf8("此環節說明 Detail 頁面第一部分的重點按鈕。")
+              : QString("This part explains the first half of key controls on the Detail page.");
+  }
+  if (std::strcmp(key, "tutorial.flow.body.8") == 0) {
+    return zh ? QString::fromUtf8("此環節說明 Detail 頁面第二部分的重點按鈕。")
+              : QString("This part explains the second half of key controls on the Detail page.");
   }
 
   if (std::strcmp(key, "tutorial.card.title") == 0) {
@@ -272,6 +410,290 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
   }
   if (std::strcmp(key, "tutorial.btn.close") == 0) {
     return zh ? QString::fromUtf8("關閉") : QString("CLOSE");
+  }
+  if (std::strcmp(key, "tutorial.btn.exit") == 0) {
+    return zh ? QString::fromUtf8("離開") : QString("EXIT");
+  }
+  if (std::strcmp(key, "tutorial.btn.contents") == 0) {
+    return zh ? QString::fromUtf8("目錄") : QString("CONTENTS");
+  }
+  if (std::strcmp(key, "tutorial.overlay.toc_header") == 0) {
+    return zh ? QString::fromUtf8("任務導覽  ❖  章節選單")
+              : QString("MISSION GUIDE  ❖  CONTENTS");
+  }
+  if (std::strcmp(key, "tutorial.overlay.part_title") == 0) {
+    return zh ? QString::fromUtf8("環節 %1/%2  %3") : QString("Part %1/%2  %3");
+  }
+  if (std::strcmp(key, "tutorial.toc.section.map") == 0) {
+    return zh ? QString::fromUtf8("地圖與任務") : QString("Map & Mission");
+  }
+  if (std::strcmp(key, "tutorial.toc.section.skyplot") == 0) {
+    return zh ? QString::fromUtf8("星下點") : QString("Skyplot");
+  }
+  if (std::strcmp(key, "tutorial.toc.section.waveforms") == 0) {
+    return zh ? QString::fromUtf8("四波形") : QString("Waveforms");
+  }
+  if (std::strcmp(key, "tutorial.toc.section.simple") == 0) {
+    return zh ? QString::fromUtf8("Simple 頁面按鈕") : QString("Simple Page Buttons");
+  }
+  if (std::strcmp(key, "tutorial.toc.section.detail") == 0) {
+    return zh ? QString::fromUtf8("Detail 頁面按鈕") : QString("Detail Page Buttons");
+  }
+  if (std::strcmp(key, "tutorial.toc.range.map") == 0) {
+    return zh ? QString::fromUtf8("環節 1-2（地圖）") : QString("Parts 1-2 (Map)");
+  }
+  if (std::strcmp(key, "tutorial.toc.range.skyplot") == 0) {
+    return zh ? QString::fromUtf8("環節 3") : QString("Part 3");
+  }
+  if (std::strcmp(key, "tutorial.toc.range.waveforms") == 0) {
+    return zh ? QString::fromUtf8("環節 4") : QString("Part 4");
+  }
+  if (std::strcmp(key, "tutorial.toc.range.simple") == 0) {
+    return zh ? QString::fromUtf8("環節 5-6") : QString("Parts 5-6");
+  }
+  if (std::strcmp(key, "tutorial.toc.range.detail") == 0) {
+    return zh ? QString::fromUtf8("環節 7-8") : QString("Parts 7-8");
+  }
+
+  if (std::strcmp(key, "tutorial.callout.default.map_top_btn") == 0) {
+    return zh ? QString::fromUtf8("按鈕功能說明\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Button usage details\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.default.map_top_info") == 0) {
+    return zh ? QString::fromUtf8("資訊行與狀態區\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Info line and status area\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.default.map_bottom_left") == 0) {
+    return zh ? QString::fromUtf8("左下區塊說明\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Bottom-left area details\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.default.map_bottom_right") == 0) {
+    return zh ? QString::fromUtf8("右下區塊說明\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Bottom-right area details\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.default.ssp_g") == 0) {
+    return zh ? QString::fromUtf8("GPS 衛星群組\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("GPS satellite group\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.default.ssp_c") == 0) {
+    return zh ? QString::fromUtf8("BDS 衛星群組\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("BDS satellite group\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.default.sig_simple") == 0) {
+    return zh ? QString::fromUtf8("Simple 模式控制區\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Simple mode controls\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.default.sig_detail") == 0) {
+    return zh ? QString::fromUtf8("Detail 模式控制區\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Detail mode controls\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.default.wave_amp") == 0) {
+    return zh ? QString::fromUtf8("振幅區塊\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Amplitude panel\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.default.wave_bw") == 0) {
+    return zh ? QString::fromUtf8("頻寬區塊\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Bandwidth panel\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.default.wave_noise") == 0) {
+    return zh ? QString::fromUtf8("雜訊區塊\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Noise panel\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.default.wave_mode") == 0) {
+    return zh ? QString::fromUtf8("模式切換區\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Mode switch area\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+
+  if (std::strcmp(key, "tutorial.callout.step1.search_box") == 0) {
+    return zh ? QString::fromUtf8("搜尋框\n輸入地名或座標（例如 22.62,120.30）後按 Enter。")
+              : QString("Search Box\nEnter place name or coordinates (e.g. 22.62,120.30), then press Enter.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step1.nfz_btn") == 0) {
+    return zh ? QString::fromUtf8("NFZ 按鈕\n開啟或關閉禁飛圖層。若地圖太雜，先關閉再規劃路徑。")
+              : QString("NFZ Button\nToggle no-fly layers. Disable temporarily if you need a cleaner planning view.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step1.dark_mode_btn") == 0) {
+    return zh ? QString::fromUtf8("亮暗模式\n切換底圖明暗，提升夜間或高亮環境下可讀性。")
+              : QString("Theme Toggle\nSwitch map brightness for better readability in day/night environments.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step1.guide_btn") == 0) {
+    return zh ? QString::fromUtf8("GUIDE 按鈕\n開啟/關閉互動導覽。可隨時中斷，不會影響目前任務設定。")
+              : QString("GUIDE Button\nOpen/close the interactive guide anytime without changing current mission setup.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step1.lang_btn") == 0) {
+    return zh ? QString::fromUtf8("語言切換\n在中文與英文介面間切換，教學文字會同步更新。")
+              : QString("Language Toggle\nSwitch UI language; tutorial text updates immediately.");
+  }
+
+  if (std::strcmp(key, "tutorial.callout.step2.zoom") == 0) {
+    return zh ? QString::fromUtf8("倍率與操作提示\n顯示目前倍率與地圖操作方式，快速確認是否在正確縮放層級。")
+              : QString("Scale & Control Hint\nShows current scale and controls so you can confirm the correct zoom level.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step2.new_user") == 0) {
+    return zh ? QString::fromUtf8("快速提示列\n會顯示下一個建議操作；熟悉後可直接關閉 GUIDE。")
+              : QString("Quick Tip Line\nShows the next recommended action; disable GUIDE once you're comfortable.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step2.osm_llh") == 0) {
+    return zh ? QString::fromUtf8("任務座標列\n同時顯示任務起點與接收機座標，是定位與校對的主依據。")
+              : QString("Mission Coordinates\nDisplays mission start and receiver position for quick validation.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step2.nfz_restricted") == 0) {
+    return zh ? QString::fromUtf8("圖例：核心禁飛（紅）\n紅色是最嚴格的禁飛區，路徑規劃應優先避開。")
+              : QString("Legend: Core Restricted (Red)\nRed marks strict no-fly zones. Avoid these first when planning.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step2.nfz_warning") == 0) {
+    return zh ? QString::fromUtf8("圖例：警示/限高（黃）\n通常代表限高或條件式限制，執行前請確認高度與規範。")
+              : QString("Legend: Warning / Alt-Limit (Yellow)\nUsually altitude/conditional limits. Verify constraints before execution.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step2.nfz_auth_warn") == 0) {
+    return zh ? QString::fromUtf8("圖例：授權區（藍）\n藍色多為可申請或授權飛行區，仍需依當地規範操作。")
+              : QString("Legend: Authorization (Blue)\nBlue is usually authorization-request areas; still follow local regulations.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step2.nfz_service_white") == 0) {
+    return zh ? QString::fromUtf8("圖例：服務區（白框）\n白框通常是服務或特殊邊界資訊，請搭配任務需求判讀。")
+              : QString("Legend: Service Zone (White Outline)\nWhite outlines usually indicate service/special boundary information.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step2.osm_runtime") == 0) {
+    return zh ? QString::fromUtf8("執行時間\n追蹤目前任務持續時間，方便判斷節點是否正常推進。")
+              : QString("Runtime\nTracks mission duration to confirm timeline progression.");
+  }
+  if (std::strcmp(key, "tutorial.callout.step2.osm_stop_btn") == 0) {
+    return zh ? QString::fromUtf8("STOP\n立即停止目前任務流程並回到待命狀態。")
+              : QString("STOP\nImmediately abort current mission flow and return to standby.");
+  }
+
+  if (std::strcmp(key, "tutorial.callout.step3.bottom_map") == 0) {
+    return zh ? QString::fromUtf8("底圖背景\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Bottom map background.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step3.sky_g") == 0) {
+    return zh ? QString::fromUtf8("G 衛星\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("G satellites.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step3.sky_c") == 0) {
+    return zh ? QString::fromUtf8("C 衛星\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("C satellites.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+
+  if (std::strcmp(key, "tutorial.callout.step4.wave_1") == 0) {
+    return zh ? QString::fromUtf8("頻譜面板\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Spectrum panel.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step4.wave_2") == 0) {
+    return zh ? QString::fromUtf8("瀑布圖面板\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Waterfall panel.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step4.wave_3") == 0) {
+    return zh ? QString::fromUtf8("時域波形面板\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Time-domain panel.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step4.wave_4") == 0) {
+    return zh ? QString::fromUtf8("星座圖面板\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Constellation panel.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+
+  if (std::strcmp(key, "tutorial.callout.step5.sig_gear") == 0) {
+    return zh ? QString::fromUtf8("Signal Setting 齒輪\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Signal Setting gear.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step5.sig_utc") == 0) {
+    return zh ? QString::fromUtf8("UTC 時間\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("UTC time.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step5.sig_bdt_gpst") == 0) {
+    return zh ? QString::fromUtf8("BDT / GPST 列\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("BDT / GPST lines.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step5.sig_rnx") == 0) {
+    return zh ? QString::fromUtf8("RNX / RNX 來源\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("RNX / RNX source.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step5.sig_tab_simple") == 0) {
+    return zh ? QString::fromUtf8("SIMPLE 分頁\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("SIMPLE tab.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step5.sig_tab_detail") == 0) {
+    return zh ? QString::fromUtf8("DETAIL 分頁\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("DETAIL tab.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+
+  if (std::strcmp(key, "tutorial.callout.step6.sig_interfere") == 0) {
+    return zh ? QString::fromUtf8("Interfere 干擾模式\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Interfere mode.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step6.sig_system") == 0) {
+    return zh ? QString::fromUtf8("System 系統切換\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("System switch.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step6.sig_fs") == 0) {
+    return zh ? QString::fromUtf8("FS 頻率滑桿\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("FS frequency slider.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step6.sig_tx") == 0) {
+    return zh ? QString::fromUtf8("TX 發射增益滑桿\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("TX transmit gain slider.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step6.sig_start") == 0) {
+    return zh ? QString::fromUtf8("Start 按鈕\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Start button.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step6.sig_exit") == 0) {
+    return zh ? QString::fromUtf8("Exit 按鈕\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Exit button.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+
+  if (std::strcmp(key, "tutorial.callout.step7.detail_sats") == 0) {
+    return zh ? QString::fromUtf8("sats\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Sats.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step7.gain_slider") == 0) {
+    return zh ? QString::fromUtf8("signal\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Signal.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step7.cn0_slider") == 0) {
+    return zh ? QString::fromUtf8("target\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Target.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step7.seed_slider") == 0) {
+    return zh ? QString::fromUtf8("seed\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Seed.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step7.path_v_slider") == 0) {
+    return zh ? QString::fromUtf8("path vmax\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Path Vmax.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step7.path_a_slider") == 0) {
+    return zh ? QString::fromUtf8("path acc\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Path Acc.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step7.prn_slider") == 0) {
+    return zh ? QString::fromUtf8("prn select\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("PRN Select.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step7.ch_slider") == 0) {
+    return zh ? QString::fromUtf8("maxch\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("MaxCH.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+
+  if (std::strcmp(key, "tutorial.callout.step8.sw_fmt") == 0) {
+    return zh ? QString::fromUtf8("format\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Format.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step8.sw_mode") == 0) {
+    return zh ? QString::fromUtf8("mode\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Mode.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step8.tg_meo") == 0) {
+    return zh ? QString::fromUtf8("meo\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("MEO.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step8.tg_iono") == 0) {
+    return zh ? QString::fromUtf8("iono\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Iono.\nabcdefghijklmn\nopqrstuvwxyz");
+  }
+  if (std::strcmp(key, "tutorial.callout.step8.tg_clk") == 0) {
+    return zh ? QString::fromUtf8("ext clk\nabcdefghijklmn\nopqrstuvwxyz")
+              : QString("Ext CLK.\nabcdefghijklmn\nopqrstuvwxyz");
   }
 
   if (std::strcmp(key, "tutorial.step.title.0") == 0) {
@@ -335,8 +757,8 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
 
   if (std::strcmp(key, "tutorial.step.body.0") == 0) {
     return zh
-               ? QString::fromUtf8("教學為可選功能，預設為關閉。\n可用「導覽 關 / 導覽 開」顯示或隱藏此覆蓋層。")
-               : QString("Guide is optional and OFF by default.\nUse GUIDE OFF / GUIDE ON to show or hide this overlay.");
+               ? QString::fromUtf8("教學為可選功能，預設為關閉。\n可用右上角導覽燈泡顯示或隱藏此覆蓋層。")
+               : QString("Guide is optional and OFF by default.\nUse the top-right GUIDE bulb to show or hide this overlay.");
   }
   if (std::strcmp(key, "tutorial.step.body.1") == 0) {
     return zh

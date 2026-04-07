@@ -368,16 +368,24 @@ static int parse_brdc_hour_utc(const char *path, time_t *t_out)
     return 0;
 }
 
-static void find_latest_rinex(char *out, size_t size)
+static void find_latest_rinex_for_mode(char *out, size_t size, uint8_t signal_mode)
 {
     out[0] = '\0';
 
     DIR *dp = opendir(kBncRinexDir);
     if (!dp) return;
 
-    time_t best_t = (time_t)0;
-    bool has_best = false;
-    char best_path[PATH_MAX] = {0};
+    /* For GPS/MIXED we prefer even-hour files. If the latest file is odd-hour,
+     * fall back to the most recent even-hour file. BDS uses any latest file. */
+    const int prefer_even = (signal_mode == SIG_MODE_GPS || signal_mode == SIG_MODE_MIXED);
+
+    time_t best_any_t = (time_t)0;
+    bool has_best_any = false;
+    char best_any_path[PATH_MAX] = {0};
+
+    time_t best_even_t = (time_t)0;
+    bool has_best_even = false;
+    char best_even_path[PATH_MAX] = {0};
 
     struct dirent *ent = NULL;
     while ((ent = readdir(dp)) != NULL) {
@@ -395,18 +403,43 @@ static void find_latest_rinex(char *out, size_t size)
         time_t t_file;
         if (parse_brdc_hour_utc(full, &t_file) != 0) continue;
 
-        if (!has_best || t_file > best_t || (t_file == best_t && strcmp(full, best_path) > 0)) {
-            best_t = t_file;
-            has_best = true;
-            snprintf(best_path, sizeof(best_path), "%s", full);
+        /* Track overall latest. */
+        if (!has_best_any || t_file > best_any_t ||
+            (t_file == best_any_t && strcmp(full, best_any_path) > 0)) {
+            best_any_t = t_file;
+            has_best_any = true;
+            snprintf(best_any_path, sizeof(best_any_path), "%s", full);
+        }
+
+        /* Track latest even-hour file for GPS/MIXED. */
+        if (prefer_even) {
+            int year = 0, doy = 0, hh = 0;
+            const char *fname = strrchr(full, '/');
+            fname = fname ? fname + 1 : full;
+            sscanf(fname + 12, "%4d%3d%2d00_01H_MN", &year, &doy, &hh);
+            if ((hh % 2) == 0) {
+                if (!has_best_even || t_file > best_even_t ||
+                    (t_file == best_even_t && strcmp(full, best_even_path) > 0)) {
+                    best_even_t = t_file;
+                    has_best_even = true;
+                    snprintf(best_even_path, sizeof(best_even_path), "%s", full);
+                }
+            }
         }
     }
 
     closedir(dp);
 
-    if (has_best) {
-        snprintf(out, size, "%s", best_path);
+    if (prefer_even) {
+        if (has_best_even) snprintf(out, size, "%s", best_even_path);
+    } else if (has_best_any) {
+        snprintf(out, size, "%s", best_any_path);
     }
+}
+
+static void find_latest_rinex(char *out, size_t size)
+{
+    find_latest_rinex_for_mode(out, size, SIG_MODE_BDS);
 }
 
 static int rinex_is_within_2h(const char *path)
@@ -417,19 +450,8 @@ static int rinex_is_within_2h(const char *path)
     return fabs(difftime(t_now, t_file)) <= 7200.0;
 }
 
-static long long current_utc_hour_key(void)
-{
-    time_t now = time(NULL);
-    struct tm tmv;
-    gmtime_r(&now, &tmv);
-
-    return (long long)(tmv.tm_year + 1900) * 1000000LL +
-           (long long)(tmv.tm_mon + 1) * 10000LL +
-           (long long)tmv.tm_mday * 100LL +
-           (long long)tmv.tm_hour;
-}
-
-static int should_try_hourly_rinex_refresh(long long *last_hour_key)
+static int should_try_periodic_rinex_refresh(uint8_t signal_mode,
+                                             long long *last_refresh_key)
 {
     time_t now = time(NULL);
     struct tm tmv;
@@ -437,24 +459,32 @@ static int should_try_hourly_rinex_refresh(long long *last_hour_key)
 
     if (tmv.tm_min < 5) return 0;
 
-    long long hour_key = current_utc_hour_key();
-    if (*last_hour_key == hour_key) return 0;
+    // BDS: hourly refresh; GPS/MIXED: every 2 hours (even UTC hour).
+    const int period_h = (signal_mode == SIG_MODE_BDS) ? 1 : 2;
+    if (period_h == 2 && (tmv.tm_hour % 2) != 0) return 0;
 
-    *last_hour_key = hour_key;
+    long long refresh_key =
+        (long long)(tmv.tm_year + 1900) * 100000LL +
+        (long long)(tmv.tm_mon + 1) * 1000LL +
+        (long long)tmv.tm_mday * 10LL +
+        (long long)(tmv.tm_hour / period_h);
+
+    if (*last_refresh_key == refresh_key) return 0;
+    *last_refresh_key = refresh_key;
     return 1;
 }
 
 static void refresh_latest_rinex_if_needed(sim_config_t *cfg, double reload_bdt)
 {
     char latest_rinex[256] = {0};
-    find_latest_rinex(latest_rinex, sizeof(latest_rinex));
+    find_latest_rinex_for_mode(latest_rinex, sizeof(latest_rinex), cfg->signal_mode);
     if (latest_rinex[0] == '\0') {
-        fprintf(stderr, "[rinex] 每小時檢查：找不到可用星曆檔 (%s/BRDC00WRD_S_YYYYDDDHH00_01H_MN*)\n", kBncRinexDir);
+        fprintf(stderr, "[rinex] 定期檢查：找不到可用星曆檔 (%s/BRDC00WRD_S_YYYYDDDHH00_01H_MN*)\n", kBncRinexDir);
         return;
     }
 
     if (!rinex_is_within_2h(latest_rinex)) {
-        fprintf(stderr, "[rinex] 每小時檢查：最新星曆超過 2 小時，保留目前星曆\n");
+        fprintf(stderr, "[rinex] 定期檢查：最新星曆超過 2 小時，保留目前星曆\n");
         return;
     }
 
@@ -464,15 +494,15 @@ static void refresh_latest_rinex_if_needed(sim_config_t *cfg, double reload_bdt)
     snprintf(cfg->rinex_file, sizeof(cfg->rinex_file), "%s", latest_rinex);
     if (!reload_simulator_nav(cfg, reload_bdt)) {
         snprintf(cfg->rinex_file, sizeof(cfg->rinex_file), "%s", old_rinex);
-        fprintf(stderr, "[rinex] 每小時檢查：重載失敗，保留原星曆 %s\n", old_rinex);
+        fprintf(stderr, "[rinex] 定期檢查：重載失敗，保留原星曆 %s\n", old_rinex);
         return;
     }
 
     map_gui_set_rinex_name(cfg->rinex_file);
     if (strcmp(old_rinex, cfg->rinex_file) == 0) {
-        printf("[rinex] 每小時 05 分後已重新載入星曆: %s\n", cfg->rinex_file);
+        printf("[rinex] 定期 05 分後已重新載入星曆: %s\n", cfg->rinex_file);
     } else {
-        printf("[rinex] 每小時 05 分後自動切換星曆: %s -> %s\n", old_rinex, cfg->rinex_file);
+        printf("[rinex] 定期 05 分後自動切換星曆: %s -> %s\n", old_rinex, cfg->rinex_file);
     }
 }
 
@@ -1236,7 +1266,8 @@ int main(int argc, char *argv[])
             preview_cfg.signal_gps = (preview_cfg.signal_mode == SIG_MODE_GPS);
             preview_cfg.fs = clamp_fs_to_mode_grid(preview_cfg.fs, preview_cfg.signal_mode);
 
-            find_latest_rinex(cfg.rinex_file, sizeof(cfg.rinex_file));
+            find_latest_rinex_for_mode(cfg.rinex_file, sizeof(cfg.rinex_file),
+                                       preview_cfg.signal_mode);
             map_gui_set_rinex_name(cfg.rinex_file);
 
             const bool spoof_selected = (preview_cfg.interference_selection == 0);
@@ -1320,7 +1351,8 @@ int main(int argc, char *argv[])
             apply_mode_if_offsets(cfg.signal_mode);
 
             if (!cfg.interference_mode) {
-                find_latest_rinex(cfg.rinex_file, sizeof(cfg.rinex_file));
+                find_latest_rinex_for_mode(cfg.rinex_file, sizeof(cfg.rinex_file),
+                                           cfg.signal_mode);
                 map_gui_set_rinex_name(cfg.rinex_file);
                 if (cfg.rinex_file[0] == '\0') {
                     fprintf(stderr,
@@ -1561,7 +1593,9 @@ int main(int argc, char *argv[])
         run_cfg.duration = 1;
         run_cfg.print_ch_info = print_ch_next_static;
 
-        if (!cfg.interference_mode && should_try_hourly_rinex_refresh(&last_hourly_rinex_refresh_key)) {
+        if (!cfg.interference_mode &&
+            should_try_periodic_rinex_refresh(cfg.signal_mode,
+                                              &last_hourly_rinex_refresh_key)) {
             refresh_latest_rinex_if_needed(&cfg, next_bdt);
         }
 

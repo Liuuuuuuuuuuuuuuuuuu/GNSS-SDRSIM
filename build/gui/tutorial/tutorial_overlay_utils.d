@@ -79,20 +79,65 @@ build/gui/tutorial/tutorial_overlay_utils.o: \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontinfo.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QPixmap \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qpixmap.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QPointF \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qpoint.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QRect \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h gui/core/gui_i18n.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QSize \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qsize.h gui/core/gui_i18n.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QString \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h \
- gui/layout/control_layout.h gui/control/control_paint.h \
+ gui/core/signal_snapshot.h globals.h rinex.h gui/core/gui_font_manager.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h \
+ gui/layout/control_layout.h gui/layout/quad_panel_layout.h \
+ gui/control/control_paint.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QColor \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h gui/geo/geo_io.h \
  gui/tutorial/tutorial_flow_utils.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/QRegularExpression \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qregularexpression.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QPainterPath \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainterpath.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QGuiApplication \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qguiapplication.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qcoreapplication.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qcoreevent.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qeventloop.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qinputmethod.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qlocale.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qvariant.h \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qmap.h
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qmap.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QScreen \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qscreen.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QList \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qlist.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QObject \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qobject.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QRect \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QSize \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QSizeF \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QTransform \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qtransform.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QWindow \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qwindow.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QEvent \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qcoreevent.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QMargins \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qmargins.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qsurface.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qsurfaceformat.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qicon.h
 gui/tutorial/tutorial_overlay_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QPainter:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainter.h:
@@ -172,19 +217,68 @@ gui/tutorial/tutorial_overlay_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontinfo.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QPixmap:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qpixmap.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QPointF:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qpoint.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QRect:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QSize:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qsize.h:
 gui/core/gui_i18n.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QString:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
+gui/core/signal_snapshot.h:
+globals.h:
+rinex.h:
+gui/core/gui_font_manager.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QFont:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h:
 gui/layout/control_layout.h:
+gui/layout/quad_panel_layout.h:
 gui/control/control_paint.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QColor:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h:
+gui/geo/geo_io.h:
 gui/tutorial/tutorial_flow_utils.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/QRegularExpression:
-/usr/include/x86_64-linux-gnu/qt5/QtCore/qregularexpression.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QPainterPath:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qpainterpath.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QGuiApplication:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qguiapplication.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qcoreapplication.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qcoreevent.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qeventloop.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qinputmethod.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qlocale.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qvariant.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qmap.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QScreen:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qscreen.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QList:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qlist.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QObject:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qobject.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QRect:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QSize:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QSizeF:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QTransform:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qtransform.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QWindow:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qwindow.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QEvent:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qcoreevent.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QMargins:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qmargins.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qsurface.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qsurfaceformat.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qicon.h:

@@ -2,6 +2,7 @@
 
 #include "gui/layout/control_layout.h"
 #include "gui/control/control_paint.h"
+#include "gui/core/gui_font_manager.h"
 #include "gui/core/gui_i18n.h"
 #include "gui/core/rf_mode_utils.h"
 
@@ -99,12 +100,11 @@ void map_draw_control_panel(QPainter &p, int win_width, int win_height,
     auto_scale *= 0.97;
   }
 
-  double switch_text_scale = auto_scale * (portrait_template ? 0.84 : 0.90);
-  double caption_text_scale = auto_scale * (portrait_template ? 0.90 : 0.94);
-
+  // Keep one shared auto-scale; the per-category ratios come from style dialog
+  // (Master/Caption/Switch/Value) so users can reason about exact percentages.
   control_paint_set_detail_scales(in.control_text_scale * auto_scale,
-                                  in.caption_text_scale * caption_text_scale,
-                                  in.switch_option_text_scale * switch_text_scale,
+                                  in.caption_text_scale * auto_scale,
+                                  in.switch_option_text_scale * auto_scale,
                                   in.value_text_scale * auto_scale);
 
   QRect panel_rect(lo.panel.x, lo.panel.y, lo.panel.w - 1, lo.panel.h - 1);
@@ -116,6 +116,10 @@ void map_draw_control_panel(QPainter &p, int win_width, int win_height,
   p.setPen(Qt::NoPen);
   p.setBrush(panel_grad);
   p.drawRoundedRect(panel_rect, 10, 10);
+  // Static white outer frame (consistent with Skyplot panel style)
+  p.setPen(QPen(QColor(255, 255, 255, 200), 2.0));
+  p.setBrush(Qt::NoBrush);
+  p.drawRoundedRect(panel_rect.adjusted(-2, -2, 2, 2), 12, 12);
   p.setRenderHint(QPainter::Antialiasing, false);
 
   auto draw_section_frame = [&](const QRect &r) {
@@ -153,7 +157,7 @@ void map_draw_control_panel(QPainter &p, int win_width, int win_height,
   bool detail_cn0_enabled = mode_any && !st.running_ui;
   bool detail_fmt_enabled = mode_any && !st.running_ui;
   bool detail_mode_enabled = mode_spoof && !st.running_ui;
-  bool detail_other_enabled = mode_spoof && !st.running_ui;
+  bool detail_other_enabled = mode_any && !st.running_ui;
   bool start_enabled = !st.running_ui && mode_any;
 
   QFont base_font = p.font();
@@ -201,9 +205,8 @@ void map_draw_control_panel(QPainter &p, int win_width, int win_height,
   };
   draw_gear_button(lo.header_gear);
 
-  QFont utc_font = base_font;
-  utc_font.setFamily("Monospace");
-  utc_font.setPointSize(clamp_int(base_font.pointSize() + lo.panel.h / 170 + 1, 9, 16));
+  QFont utc_font = gui_font_mono(
+      clamp_int(base_font.pointSize() + lo.panel.h / 170 + 1, 9, 16));
   utc_font.setBold(true);
   while (utc_font.pointSize() > 8) {
     QFontMetrics fm(utc_font);
@@ -215,9 +218,7 @@ void map_draw_control_panel(QPainter &p, int win_width, int win_height,
   p.drawText(QRect(lo.header_utc.x, lo.header_utc.y, lo.header_utc.w, lo.header_utc.h),
              Qt::AlignVCenter | Qt::AlignRight, in.time_info.utc_label);
 
-  QFont mono_font = base_font;
-  mono_font.setFamily("Monospace");
-  mono_font.setPointSize(clamp_int(base_font.pointSize(), 9, 14));
+  QFont mono_font = gui_font_mono(clamp_int(base_font.pointSize(), 9, 14));
   p.setFont(mono_font);
 
   QString rnx_name_full = short_base_name(in.rnx_name.isEmpty() ? QString("N/A") : in.rnx_name);
@@ -397,9 +398,9 @@ void map_draw_control_panel(QPainter &p, int win_width, int win_height,
 
   if (st.show_detailed_ctrl) {
     if (lo.detail_sats.h > 0) {
-      QFont detail_info_font = base_font;
-      detail_info_font.setFamily("Monospace");
-      detail_info_font.setPointSize(clamp_int((int)std::lround((double)base_font.pointSize() * 0.92), 9, 14));
+        QFont detail_info_font = gui_font_mono(
+          clamp_int((int)std::lround((double)base_font.pointSize() * 0.92),
+              9, 14));
       p.setFont(detail_info_font);
       p.setPen(mode_any ? QColor("#b9cadf") : color_dim);
       p.drawText(QRect(lo.detail_sats.x, lo.detail_sats.y, lo.detail_sats.w, lo.detail_sats.h),

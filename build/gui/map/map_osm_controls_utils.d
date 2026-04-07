@@ -85,6 +85,21 @@ build/gui/map/map_osm_controls_utils.o: \
  gui/layout/control_layout.h gui/control/control_paint.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QColor \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h \
+ gui/core/gui_font_manager.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QFont \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList \
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/QPainterPath \
+ /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainterpath.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h \
  /usr/include/x86_64-linux-gnu/qt5/QtGui/QPen \
@@ -177,6 +192,21 @@ gui/layout/control_layout.h:
 gui/control/control_paint.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QColor:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h:
+gui/core/gui_font_manager.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QFont:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qfont.h:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/QStringList:
+/usr/include/x86_64-linux-gnu/qt5/QtCore/qstringlist.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/QWidget:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qwidget.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgetsglobal.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qtwidgets-config.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qpalette.h:
+/usr/include/x86_64-linux-gnu/qt5/QtWidgets/qsizepolicy.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qcursor.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qkeysequence.h:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/QPainterPath:
+/usr/include/x86_64-linux-gnu/qt5/QtGui/qpainterpath.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QPen:

@@ -215,10 +215,7 @@ void MapWidget::update_alert_overlay() {
     text_color = QColor("#fee2e2");
   }
 
-  QFont font = alert_overlay_->font();
-  font.setFamily("Noto Sans");
-  font.setBold(true);
-  font.setPointSize(std::max(10, std::min(13, width() / 120)));
+  QFont font = gui_font_ui_bold(ui_language_, std::max(10, std::min(13, width() / 120)));
   alert_overlay_->setFont(font);
 
   const int pad_x = 14;

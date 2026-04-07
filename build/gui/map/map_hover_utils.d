@@ -84,13 +84,7 @@ build/gui/map/map_hover_utils.o: gui/map/map_hover_utils.cpp \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/qrect.h \
  gui/core/control_state.h gui/core/gui_i18n.h \
  /usr/include/x86_64-linux-gnu/qt5/QtCore/QString \
- /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h \
- gui/layout/control_layout.h gui/control/control_paint.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/QColor \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h \
- gui/layout/quad_panel_layout.h \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics \
- /usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h
+ /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h
 gui/map/map_hover_utils.h:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/QPainter:
 /usr/include/x86_64-linux-gnu/qt5/QtGui/qpainter.h:
@@ -178,10 +172,3 @@ gui/core/control_state.h:
 gui/core/gui_i18n.h:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/QString:
 /usr/include/x86_64-linux-gnu/qt5/QtCore/qstring.h:
-gui/layout/control_layout.h:
-gui/control/control_paint.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/QColor:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qcolor.h:
-gui/layout/quad_panel_layout.h:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/QFontMetrics:
-/usr/include/x86_64-linux-gnu/qt5/QtGui/qfontmetrics.h:
