@@ -1,0 +1,39 @@
+# Object files
+*.o
+*.o:Zone.Identifier
+
+# RINEX
+files
+*.rnx
+*.rnx:Zone.Identifier
+
+# Zone Identifier files (Windows)
+*:Zone.Identifier
+
+# Build
+artifacts
+dist/
+*.a
+*.so
+*.dylib
+*.exe
+*.out
+
+# Dependency files
+*.d
+
+# BRDM folder: keep folder, ignore RNX contents
+!BRDM/
+BRDM/*.rnx
+BRDM/*.rnx:Zone.Identifier
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db

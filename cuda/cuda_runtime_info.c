@@ -1,0 +1,48 @@
+#include "cuda/cuda_runtime_info.h"
+
+#include <stdlib.h>
+#include <string.h>
+#include <strings.h>
+
+static int is_truthy_env(const char *v)
+{
+    if (!v || !v[0]) return 0;
+    if (strcmp(v, "1") == 0) return 1;
+    if (strcasecmp(v, "true") == 0) return 1;
+    if (strcasecmp(v, "yes") == 0) return 1;
+    if (strcasecmp(v, "on") == 0) return 1;
+    return 0;
+}
+
+void cuda_runtime_apply_safe_env(void)
+{
+    const char *force_disable_jit = getenv("BDS_CUDA_DISABLE_JIT");
+    if (is_truthy_env(force_disable_jit)) {
+        setenv("CUDA_DISABLE_PTX_JIT", "1", 1);
+        setenv("CUDA_FORCE_PTX_JIT", "0", 1);
+        setenv("CUDA_DISABLE_JIT", "1", 1);
+    } else {
+        setenv("CUDA_DISABLE_PTX_JIT", "0", 1);
+        setenv("CUDA_FORCE_PTX_JIT", "0", 1);
+        setenv("CUDA_DISABLE_JIT", "0", 1);
+    }
+    setenv("CUDA_MODULE_LOADING", "EAGER", 1);
+}
+
+int cuda_runtime_is_enabled_by_env(void)
+{
+    const char *disable = getenv("BDS_DISABLE_CUDA");
+    return is_truthy_env(disable) ? 0 : 1;
+}
+
+int cuda_runtime_should_run_smoke(void)
+{
+    const char *skip = getenv("BDS_SKIP_CUDA_SMOKE");
+    return is_truthy_env(skip) ? 0 : 1;
+}
+
+int cuda_runtime_probe_safely(int (*smoke_test_fn)(void))
+{
+    if (!smoke_test_fn) return 0;
+    return smoke_test_fn() ? 1 : 0;
+}
