@@ -9,6 +9,7 @@
 
 struct MapOsmPressRects {
     QRect osm_panel_rect;
+    QRect osm_scale_bar_rect;
     QRect osm_stop_btn_rect;
     QRect dark_mode_btn_rect;
     QRect search_return_btn_rect;
@@ -25,6 +26,7 @@ struct MapOsmPressState {
 };
 
 struct MapOsmPressActions {
+    std::function<void()> toggle_scale_ruler;
     std::function<void()> stop_simulation;
     std::function<void()> toggle_dark_mode;
     std::function<void()> restore_search;

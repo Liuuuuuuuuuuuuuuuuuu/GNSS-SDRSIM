@@ -82,7 +82,15 @@ struct MapOsmPanelInput {
   bool tx_active = false;
   long long elapsed_sec = 0;
   QString plan_status;
-    bool force_stop_preview = false;
+  bool scale_ruler_enabled = false;
+  bool scale_ruler_has_start = false;
+  double scale_ruler_start_lat_deg = 0.0;
+  double scale_ruler_start_lon_deg = 0.0;
+  bool scale_ruler_has_end = false;
+  double scale_ruler_end_lat_deg = 0.0;
+  double scale_ruler_end_lon_deg = 0.0;
+  bool scale_ruler_end_fixed = false;
+  bool force_stop_preview = false;
 };
 
 struct MapOsmPanelState {
@@ -94,6 +102,7 @@ struct MapOsmPanelState {
   QRect search_return_btn_rect;
   QRect osm_stop_btn_rect;
   QRect osm_runtime_rect;
+  QRect osm_scale_bar_rect;
   std::vector<QRect> status_badge_rects;
   std::vector<QRect> nfz_legend_row_rects;
 };

@@ -24,7 +24,9 @@ struct MapOsmControlsInput {
   std::array<bool, 4> nfz_layer_visible = {true, false, false, false};
   bool tx_active = false;
   long long elapsed_sec = 0;
-    bool force_stop_preview = false;
+  bool show_target_distance = false;
+  double target_distance_km = 0.0;
+  bool force_stop_preview = false;
 };
 
 struct MapOsmControlsState {

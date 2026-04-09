@@ -363,9 +363,11 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
   osm_in.preview_start_lon_deg = preview_start_lon_deg_;
   osm_in.preview_end_lat_deg = preview_end_lat_deg_;
   osm_in.preview_end_lon_deg = preview_end_lon_deg_;
-  osm_in.receiver_valid = g_receiver_valid != 0;
-  osm_in.receiver_lat_deg = g_receiver_lat_deg;
-  osm_in.receiver_lon_deg = g_receiver_lon_deg;
+    osm_in.receiver_valid = receiver_anim_valid_ || (g_receiver_valid != 0);
+    osm_in.receiver_lat_deg =
+      receiver_anim_valid_ ? receiver_anim_lat_deg_ : g_receiver_lat_deg;
+    osm_in.receiver_lon_deg =
+      receiver_anim_valid_ ? receiver_anim_lon_deg_ : g_receiver_lon_deg;
   osm_in.running_ui = running_ui;
   osm_in.jam_selected = jam_selected;
   osm_in.can_undo = can_undo;
@@ -379,6 +381,14 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
   osm_in.nfz_layer_visible = nfz_layer_visible_;
   osm_in.tx_active = tx_active;
   osm_in.elapsed_sec = elapsed_sec;
+  osm_in.scale_ruler_enabled = scale_ruler_enabled_;
+  osm_in.scale_ruler_has_start = scale_ruler_has_start_;
+  osm_in.scale_ruler_start_lat_deg = scale_ruler_start_lat_deg_;
+  osm_in.scale_ruler_start_lon_deg = scale_ruler_start_lon_deg_;
+  osm_in.scale_ruler_has_end = scale_ruler_has_end_;
+  osm_in.scale_ruler_end_lat_deg = scale_ruler_end_lat_deg_;
+  osm_in.scale_ruler_end_lon_deg = scale_ruler_end_lon_deg_;
+  osm_in.scale_ruler_end_fixed = scale_ruler_end_fixed_;
   osm_in.plan_status = QString::fromStdString(plan_status_);
 
   const bool bg_needs_rebuild = osm_bg_needs_redraw_ || !osm_bg_cache_valid_ ||
@@ -416,6 +426,7 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
   search_return_btn_rect_ = osm_out.search_return_btn_rect;
   osm_stop_btn_rect_ = osm_out.osm_stop_btn_rect;
   osm_runtime_rect_ = osm_out.osm_runtime_rect;
+  osm_scale_bar_rect_ = osm_out.osm_scale_bar_rect;
   osm_status_badge_rects_ = osm_out.status_badge_rects;
   osm_nfz_legend_row_rects_ = osm_out.nfz_legend_row_rects;
 }

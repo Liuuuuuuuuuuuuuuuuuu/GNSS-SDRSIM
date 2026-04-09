@@ -172,6 +172,8 @@ public:
     next_scene_tick_ = now;
     tutorial_anim_start_tp_ = now;
     tutorial_anim_step_anchor_ = -1;
+    receiver_anim_last_tp_ = now;
+    next_receiver_draw_tick_ = now;
 
     timer_ = new QTimer(this);
     timer_->setTimerType(Qt::PreciseTimer);
@@ -684,6 +686,7 @@ protected:
 
       MapOsmPressRects rects;
       rects.osm_panel_rect = osm_panel_rect_;
+      rects.osm_scale_bar_rect = osm_scale_bar_rect_;
       rects.osm_stop_btn_rect = osm_stop_btn_rect_;
       rects.dark_mode_btn_rect = dark_mode_btn_rect_;
       rects.search_return_btn_rect = search_return_btn_rect_;
@@ -698,6 +701,14 @@ protected:
       state.drag_last_pos = &drag_last_pos_;
 
       MapOsmPressActions actions;
+      actions.toggle_scale_ruler = [this]() {
+        scale_ruler_enabled_ = !scale_ruler_enabled_;
+        if (!scale_ruler_enabled_) {
+          scale_ruler_has_start_ = false;
+          scale_ruler_has_end_ = false;
+          scale_ruler_end_fixed_ = false;
+        }
+      };
       actions.stop_simulation = [this]() {
         {
           std::lock_guard<std::mutex> lk(g_ctrl_mtx);
@@ -755,8 +766,17 @@ protected:
     } else {
       MapOsmPressRects rects;
       rects.osm_panel_rect = osm_panel_rect_;
+      rects.osm_scale_bar_rect = osm_scale_bar_rect_;
       MapOsmPressState state;
       MapOsmPressActions actions;
+      actions.toggle_scale_ruler = [this]() {
+        scale_ruler_enabled_ = !scale_ruler_enabled_;
+        if (!scale_ruler_enabled_) {
+          scale_ruler_has_start_ = false;
+          scale_ruler_has_end_ = false;
+          scale_ruler_end_fixed_ = false;
+        }
+      };
       actions.confirm_preview_segment = [this]() { confirm_preview_segment(); };
       actions.update_rect = [this](const QRect &rect) { update(rect); };
       if (map_osm_handle_press(event->pos(), event->button(), running_ui,
@@ -850,6 +870,18 @@ protected:
       return;
     }
 
+    if (scale_ruler_enabled_ && scale_ruler_has_start_ && !scale_ruler_end_fixed_ &&
+        osm_panel_rect_.contains(event->pos())) {
+      double lat = 0.0;
+      double lon = 0.0;
+      if (panel_point_to_llh(event->pos(), &lat, &lon)) {
+        scale_ruler_has_end_ = true;
+        scale_ruler_end_lat_deg_ = lat;
+        scale_ruler_end_lon_deg_ = lon;
+        update(osm_panel_rect_);
+      }
+    }
+
     if (map_osm_handle_move(
             event->pos(), event->buttons(), osm_panel_rect_,
             is_jam_map_locked(), &dragging_osm_, &drag_moved_osm_,
@@ -901,6 +933,31 @@ protected:
         std::lock_guard<std::mutex> lk(g_ctrl_mtx);
         running_ui = g_ctrl.running_ui;
       }
+
+      if (scale_ruler_enabled_ && dragging_osm_ && !drag_moved_osm_ &&
+          osm_panel_rect_.contains(event->pos())) {
+        double lat = 0.0;
+        double lon = 0.0;
+        if (panel_point_to_llh(event->pos(), &lat, &lon)) {
+          if (!scale_ruler_has_start_ || scale_ruler_end_fixed_) {
+            scale_ruler_has_start_ = true;
+            scale_ruler_start_lat_deg_ = lat;
+            scale_ruler_start_lon_deg_ = lon;
+            scale_ruler_has_end_ = false;
+            scale_ruler_end_fixed_ = false;
+          } else {
+            scale_ruler_has_end_ = true;
+            scale_ruler_end_lat_deg_ = lat;
+            scale_ruler_end_lon_deg_ = lon;
+            scale_ruler_end_fixed_ = true;
+          }
+          dragging_osm_ = false;
+          update(osm_panel_rect_);
+          event->accept();
+          return;
+        }
+      }
+
       if (map_osm_handle_left_release(
               event->pos(), osm_panel_rect_, is_jam_map_locked(), running_ui,
               &suppress_left_click_release_, &dragging_osm_, &drag_moved_osm_,
@@ -1176,6 +1233,9 @@ private:
 
   void draw_tutorial_overlay(QPainter &p, int win_width, int win_height);
 
+  void update_receiver_animation(std::chrono::steady_clock::time_point now,
+                                 bool running_ui, bool *moved);
+
 
 
   void onTick();
@@ -1318,8 +1378,17 @@ private:
   QRect search_return_btn_rect_;
   QRect osm_stop_btn_rect_; // <== 新增：用來記錄 OSM 上 STOP 按鈕的位置
   QRect osm_runtime_rect_;
+  QRect osm_scale_bar_rect_;
   std::vector<QRect> osm_status_badge_rects_;
   std::vector<QRect> osm_nfz_legend_row_rects_;
+  bool scale_ruler_enabled_ = false;
+  bool scale_ruler_has_start_ = false;
+  double scale_ruler_start_lat_deg_ = 0.0;
+  double scale_ruler_start_lon_deg_ = 0.0;
+  bool scale_ruler_has_end_ = false;
+  double scale_ruler_end_lat_deg_ = 0.0;
+  double scale_ruler_end_lon_deg_ = 0.0;
+  bool scale_ruler_end_fixed_ = false;
   std::array<bool, 4> nfz_layer_visible_ = {true, false, false, false};
   QRect tutorial_toggle_rect_;
   QRect tutorial_prev_btn_rect_;
@@ -1352,6 +1421,13 @@ private:
   QRect hover_help_anchor_rect_;
   bool map_panel_bootstrap_redraw_done_ = false;
   std::chrono::steady_clock::time_point hover_enter_tp_;
+  bool receiver_anim_valid_ = false;
+  double receiver_anim_lat_deg_ = 0.0;
+  double receiver_anim_lon_deg_ = 0.0;
+  double receiver_anim_target_lat_deg_ = 0.0;
+  double receiver_anim_target_lon_deg_ = 0.0;
+  std::chrono::steady_clock::time_point receiver_anim_last_tp_;
+  std::chrono::steady_clock::time_point next_receiver_draw_tick_;
 
   // 獨立輔助函數：瞬間跳轉並釘上目標座標點
   void set_selected_llh_direct(double lat_deg, double lon_deg, double h_m = 0.0,

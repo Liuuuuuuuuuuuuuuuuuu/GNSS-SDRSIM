@@ -34,11 +34,14 @@ void draw_satellite_legend(QPainter &p, const QRect &map_rect,
                            const QColor &color_sat_active,
                            const QColor &color_sat_selected_green,
                            const QColor &color_rx,
+                           const QColor &color_rx_dim,
                            const QColor &color_text,
+                           const QColor &color_text_dim,
                            const QColor &color_sat_outline,
                            const QColor &color_gps_sys,
                            const QColor &color_bds_sys,
                            GuiLanguage language,
+                           bool receiver_valid,
                            bool has_visible,
                            bool has_standby,
                            bool has_running,
@@ -99,13 +102,15 @@ void draw_satellite_legend(QPainter &p, const QRect &map_rect,
   // Receiver row
   {
     int ry = row_y(row_idx++);
-    p.setPen(QPen(color_rx, 2));
+    const QColor receiver_icon = receiver_valid ? color_rx : color_rx_dim;
+    const QColor receiver_text = receiver_valid ? color_text : color_text_dim;
+    p.setPen(QPen(receiver_icon, 2));
     p.drawLine(icon_x - 6, ry, icon_x + 6, ry);
     p.drawLine(icon_x, ry - 6, icon_x, ry + 6);
     p.setPen(Qt::NoPen);
-    p.setBrush(color_rx);
+    p.setBrush(receiver_icon);
     p.drawEllipse(QPoint(icon_x, ry), 2, 2);
-    p.setPen(color_text);
+    p.setPen(receiver_text);
     p.drawText(QRect(text_x, ry - row_h / 2, text_w, row_h),
                Qt::AlignLeft | Qt::AlignVCenter, lbl_receiver);
   }
@@ -195,6 +200,7 @@ void map_draw_satellite_layer(QPainter &p, const QRect &map_rect,
     const QColor color_gps_sys("#aaff00");
     const QColor color_bds_sys("#ff6600");
   const QColor color_rx("#00e5ff");
+  const QColor color_rx_dim("#4b657d");
   const QColor color_text("#f7fbff");
   const QColor color_text_dim("#9aa9bc");
 
@@ -282,15 +288,13 @@ void map_draw_satellite_layer(QPainter &p, const QRect &map_rect,
   const bool show_bds_row =
       (ctrl.signal_mode == SIG_MODE_BDS || ctrl.signal_mode == SIG_MODE_MIXED);
 
-  // Keep legend visibility in sync with receiver visibility.
-  if (receiver_valid && !mode_jam) {
-    draw_satellite_legend(p, map_rect, color_sat, color_sat_active,
-                          color_sat_selected_green, color_rx,
-                          color_text, color_sat_outline,
-                          color_gps_sys, color_bds_sys,
-                          language, has_visible, has_standby, has_running,
-                          show_gps_row, show_bds_row);
-  }
+  draw_satellite_legend(p, map_rect, color_sat, color_sat_active,
+                        color_sat_selected_green, color_rx, color_rx_dim,
+                        color_text, color_text_dim, color_sat_outline,
+                        color_gps_sys, color_bds_sys,
+                        language, receiver_valid && !mode_jam,
+                        has_visible, has_standby, has_running,
+                        show_gps_row, show_bds_row);
 
   p.restore();
 }

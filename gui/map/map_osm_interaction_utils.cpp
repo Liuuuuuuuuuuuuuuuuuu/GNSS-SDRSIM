@@ -12,6 +12,15 @@ bool map_osm_handle_press(const QPoint &pos, Qt::MouseButton button,
                           MapOsmPressState *state,
                           const MapOsmPressActions &actions) {
   if (button == Qt::LeftButton) {
+    if (!rects.osm_scale_bar_rect.isEmpty() &&
+        rects.osm_scale_bar_rect.contains(pos)) {
+      if (actions.toggle_scale_ruler)
+        actions.toggle_scale_ruler();
+      if (actions.update_rect)
+        actions.update_rect(rects.osm_panel_rect);
+      return true;
+    }
+
     if (running_ui && rects.osm_stop_btn_rect.contains(pos)) {
       if (actions.stop_simulation) actions.stop_simulation();
       if (actions.update_all) actions.update_all();

@@ -1,3 +1,90 @@
+void MapWidget::update_receiver_animation(std::chrono::steady_clock::time_point now,
+                                          bool running_ui, bool *moved) {
+  if (moved)
+    *moved = false;
+
+  const bool raw_valid = (g_receiver_valid != 0);
+  if (!raw_valid) {
+    receiver_anim_valid_ = false;
+    receiver_anim_last_tp_ = now;
+    return;
+  }
+
+  const double raw_lat = g_receiver_lat_deg;
+  const double raw_lon = g_receiver_lon_deg;
+
+  auto wrap_lon = [](double lon) {
+    while (lon < -180.0)
+      lon += 360.0;
+    while (lon >= 180.0)
+      lon -= 360.0;
+    return lon;
+  };
+  auto lon_delta = [&](double to_lon, double from_lon) {
+    return wrap_lon(to_lon - from_lon);
+  };
+
+  if (!receiver_anim_valid_) {
+    receiver_anim_valid_ = true;
+    receiver_anim_lat_deg_ = raw_lat;
+    receiver_anim_lon_deg_ = wrap_lon(raw_lon);
+    receiver_anim_target_lat_deg_ = receiver_anim_lat_deg_;
+    receiver_anim_target_lon_deg_ = receiver_anim_lon_deg_;
+    receiver_anim_last_tp_ = now;
+    if (moved)
+      *moved = true;
+    return;
+  }
+
+  const double target_lat_diff = std::fabs(raw_lat - receiver_anim_target_lat_deg_);
+  const double target_lon_diff = std::fabs(lon_delta(raw_lon, receiver_anim_target_lon_deg_));
+  if (target_lat_diff > 1e-9 || target_lon_diff > 1e-9) {
+    receiver_anim_target_lat_deg_ = raw_lat;
+    receiver_anim_target_lon_deg_ = wrap_lon(raw_lon);
+  }
+
+  double dt_sec =
+      std::chrono::duration<double>(now - receiver_anim_last_tp_).count();
+  if (dt_sec < 0.0)
+    dt_sec = 0.0;
+  if (dt_sec > 0.20)
+    dt_sec = 0.20;
+  receiver_anim_last_tp_ = now;
+
+  const double prev_lat = receiver_anim_lat_deg_;
+  const double prev_lon = receiver_anim_lon_deg_;
+
+  if (!running_ui) {
+    receiver_anim_lat_deg_ = receiver_anim_target_lat_deg_;
+    receiver_anim_lon_deg_ = receiver_anim_target_lon_deg_;
+  } else if (dt_sec > 0.0) {
+    const double tau_sec = 0.30;
+    double alpha = 1.0 - std::exp(-dt_sec / tau_sec);
+    alpha = clamp_double(alpha, 0.0, 1.0);
+
+    receiver_anim_lat_deg_ +=
+        (receiver_anim_target_lat_deg_ - receiver_anim_lat_deg_) * alpha;
+    receiver_anim_lon_deg_ = wrap_lon(
+        receiver_anim_lon_deg_ +
+        lon_delta(receiver_anim_target_lon_deg_, receiver_anim_lon_deg_) * alpha);
+
+    const double remain_lat =
+        std::fabs(receiver_anim_target_lat_deg_ - receiver_anim_lat_deg_);
+    const double remain_lon = std::fabs(
+        lon_delta(receiver_anim_target_lon_deg_, receiver_anim_lon_deg_));
+    if (remain_lat < 1e-8 && remain_lon < 1e-8) {
+      receiver_anim_lat_deg_ = receiver_anim_target_lat_deg_;
+      receiver_anim_lon_deg_ = receiver_anim_target_lon_deg_;
+    }
+  }
+
+  if (moved) {
+    const double dlat = std::fabs(receiver_anim_lat_deg_ - prev_lat);
+    const double dlon = std::fabs(lon_delta(receiver_anim_lon_deg_, prev_lon));
+    *moved = (dlat > 1e-8 || dlon > 1e-8);
+  }
+}
+
 void MapWidget::onTick() {
   static bool last_running_ui = false;
   static bool last_tx_active = false;
@@ -54,6 +141,18 @@ void MapWidget::onTick() {
   const QRect bottom_right_rect(win_width / 2, win_height / 2,
                                 win_width - win_width / 2,
                                 win_height - win_height / 2);
+  bool receiver_moved = false;
+  update_receiver_animation(now, running_ui, &receiver_moved);
+
+  if (running_ui && receiver_anim_valid_ && receiver_moved &&
+      now >= next_receiver_draw_tick_) {
+    do {
+      next_receiver_draw_tick_ += std::chrono::milliseconds(33);
+    } while (next_receiver_draw_tick_ <= now);
+    update(osm_rect);
+    update(map_rect);
+  }
+
   const bool tx_active_now = g_tx_active.load();
   if (!running_ui) {
     last_tx_active = false;
@@ -207,8 +306,11 @@ void MapWidget::onTick() {
 void MapWidget::draw_map_panel(QPainter &p, const QRect &map_rect) {
   if (map_rect.width() <= 0 || map_rect.height() <= 0)
     return;
-  if (!g_receiver_valid)
-    return;
+  const bool receiver_valid = receiver_anim_valid_ || (g_receiver_valid != 0);
+  const double receiver_lat = receiver_anim_valid_ ? receiver_anim_lat_deg_
+                                                   : g_receiver_lat_deg;
+  const double receiver_lon = receiver_anim_valid_ ? receiver_anim_lon_deg_
+                                                   : g_receiver_lon_deg;
 
   if (map_panel_static_bg_.isNull() || map_panel_static_bg_size_ != map_rect.size()) {
     map_panel_static_bg_size_ = map_rect.size();
@@ -261,8 +363,8 @@ void MapWidget::draw_map_panel(QPainter &p, const QRect &map_rect) {
   }
 
   map_draw_satellite_layer(p, map_rect, sats_, st, g_active_prn_mask, MAX_SAT,
-                           g_receiver_valid, g_receiver_lat_deg,
-                           g_receiver_lon_deg, ui_language_);
+                           receiver_valid, receiver_lat,
+                           receiver_lon, ui_language_);
 
   p.setPen(QPen(color_border, 1));
   p.setBrush(Qt::NoBrush);

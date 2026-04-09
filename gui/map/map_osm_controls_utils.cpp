@@ -11,6 +11,7 @@
 #include <QPen>
 
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -240,6 +241,41 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
               txt_w + time_hpad * 2,
               txt_h + time_vpad * 2);
       out->osm_runtime_rect = time_rect;
+
+      if (in.show_target_distance && std::isfinite(in.target_distance_km) &&
+          in.target_distance_km >= 0.0) {
+        int dist_decimals = 0;
+        if (in.target_distance_km < 10.0) {
+          dist_decimals = 2;
+        } else if (in.target_distance_km < 100.0) {
+          dist_decimals = 1;
+        }
+        QString dist_txt =
+          gui_i18n_text(in.language, "osm.remaining_distance_fmt")
+                .arg(in.target_distance_km, 0, 'f', dist_decimals);
+
+        int dist_w = p.fontMetrics().horizontalAdvance(dist_txt);
+        const int dist_hpad = std::max(10, std::min(16, in.panel.width() / 34));
+        const int dist_vpad = std::max(5, std::min(9, in.panel.height() / 48));
+        const int dist_gap = std::max(8, std::min(14, in.panel.height() / 55));
+        QRect dist_rect(in.panel.x() + (in.panel.width() - dist_w) / 2 - dist_hpad,
+                        time_rect.y() - (txt_h + dist_vpad * 2) - dist_gap,
+                        dist_w + dist_hpad * 2,
+                        txt_h + dist_vpad * 2);
+
+        const int min_top = in.panel.y() + 8;
+        if (dist_rect.y() < min_top) {
+          dist_rect.moveTop(min_top);
+        }
+
+        if (dist_rect.bottom() < time_rect.y() - 2) {
+          p.setPen(QPen(QColor(120, 229, 173, 200), 2));
+          p.setBrush(QColor(10, 28, 26, 220));
+          p.drawRoundedRect(dist_rect, 8, 8);
+          p.setPen(QColor("#7ff0bd"));
+          p.drawText(dist_rect, Qt::AlignCenter, dist_txt);
+        }
+      }
 
       p.setPen(QPen(QColor(255, 181, 71, 200), 2));
       p.setBrush(QColor(10, 20, 35, 220));

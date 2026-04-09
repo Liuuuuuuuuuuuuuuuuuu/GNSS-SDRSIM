@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace {
 
@@ -17,6 +18,341 @@ bool draw_screen_point(const MapOsmPanelInput &in, double lat, double lon,
   if (!in.coord_to_screen)
     return false;
   return in.coord_to_screen(lat, lon, out);
+}
+
+bool llh_is_valid(double lat_deg, double lon_deg) {
+  return std::isfinite(lat_deg) && std::isfinite(lon_deg) &&
+         lat_deg >= -90.0 && lat_deg <= 90.0 && lon_deg >= -180.0 &&
+         lon_deg <= 180.0;
+}
+
+double distance_m_for_display(double lat0_deg, double lon0_deg,
+                              double lat1_deg, double lon1_deg) {
+  const double lat0 = lat0_deg * M_PI / 180.0;
+  const double lat1 = lat1_deg * M_PI / 180.0;
+  const double dlat = lat1 - lat0;
+  const double dlon = wrap_lon_delta_deg(lon1_deg - lon0_deg) * M_PI / 180.0;
+  const double mean_lat = 0.5 * (lat0 + lat1);
+  const double x = dlon * std::cos(mean_lat) * 6371000.0;
+  const double y = dlat * 6371000.0;
+  return std::sqrt(x * x + y * y);
+}
+
+double polyline_total_distance_m(const std::vector<LonLat> &polyline) {
+  if (polyline.size() < 2)
+    return 0.0;
+  double total_m = 0.0;
+  for (size_t i = 1; i < polyline.size(); ++i) {
+    const auto &a = polyline[i - 1];
+    const auto &b = polyline[i];
+    if (!llh_is_valid(a.lat, a.lon) || !llh_is_valid(b.lat, b.lon))
+      continue;
+    total_m += distance_m_for_display(a.lat, a.lon, b.lat, b.lon);
+  }
+  return total_m;
+}
+
+double polyline_remaining_from_pos_m(const std::vector<LonLat> &polyline,
+                                     double pos_lat_deg,
+                                     double pos_lon_deg) {
+  if (polyline.size() < 2 || !llh_is_valid(pos_lat_deg, pos_lon_deg))
+    return std::numeric_limits<double>::quiet_NaN();
+
+  const double kEarthR = 6371000.0;
+  std::vector<double> cum_len_m(polyline.size(), 0.0);
+  for (size_t i = 1; i < polyline.size(); ++i) {
+    const auto &a = polyline[i - 1];
+    const auto &b = polyline[i];
+    double seg_m = 0.0;
+    if (llh_is_valid(a.lat, a.lon) && llh_is_valid(b.lat, b.lon)) {
+      seg_m = distance_m_for_display(a.lat, a.lon, b.lat, b.lon);
+      if (!std::isfinite(seg_m) || seg_m < 0.0)
+        seg_m = 0.0;
+    }
+    cum_len_m[i] = cum_len_m[i - 1] + seg_m;
+  }
+  const double total_m = cum_len_m.back();
+  if (!(total_m > 0.0))
+    return std::numeric_limits<double>::quiet_NaN();
+
+  double best_remain_m = std::numeric_limits<double>::infinity();
+
+  for (size_t i = 1; i < polyline.size(); ++i) {
+    const auto &a = polyline[i - 1];
+    const auto &b = polyline[i];
+    if (!llh_is_valid(a.lat, a.lon) || !llh_is_valid(b.lat, b.lon))
+      continue;
+
+    const double mean_lat_rad =
+        0.5 * (a.lat + b.lat) * M_PI / 180.0;
+    const double bx = wrap_lon_delta_deg(b.lon - a.lon) * M_PI / 180.0 *
+                      std::cos(mean_lat_rad) * kEarthR;
+    const double by = (b.lat - a.lat) * M_PI / 180.0 * kEarthR;
+    const double seg_len_m = std::sqrt(bx * bx + by * by);
+    if (!(seg_len_m > 1e-6)) {
+      continue;
+    }
+
+    const double px = wrap_lon_delta_deg(pos_lon_deg - a.lon) * M_PI / 180.0 *
+                      std::cos(mean_lat_rad) * kEarthR;
+    const double py = (pos_lat_deg - a.lat) * M_PI / 180.0 * kEarthR;
+
+    const double dot = px * bx + py * by;
+    double t = dot / (seg_len_m * seg_len_m);
+    if (t < 0.0)
+      t = 0.0;
+    if (t > 1.0)
+      t = 1.0;
+
+    const double qx = t * bx;
+    const double qy = t * by;
+    const double dx = px - qx;
+    const double dy = py - qy;
+    const double cross_track_m = std::sqrt(dx * dx + dy * dy);
+
+    const double along_m = cum_len_m[i - 1] + t * seg_len_m;
+    double remain_m = total_m - along_m;
+    if (remain_m < 0.0)
+      remain_m = 0.0;
+
+    // Prefer on-path projections; allow off-path fallback if user drifts away.
+    const double penalty = cross_track_m * 0.02;
+    const double scored_remain = remain_m + penalty;
+    if (scored_remain < best_remain_m) {
+      best_remain_m = remain_m;
+    }
+  }
+
+  if (!std::isfinite(best_remain_m))
+    return std::numeric_limits<double>::quiet_NaN();
+  return best_remain_m;
+}
+
+double segment_full_distance_m(const MapOsmPanelSegment &seg) {
+  if (seg.mode == MapOsmPanelSegment::PathMode::Line) {
+    if (!llh_is_valid(seg.start_lat_deg, seg.start_lon_deg) ||
+        !llh_is_valid(seg.end_lat_deg, seg.end_lon_deg)) {
+      return std::numeric_limits<double>::quiet_NaN();
+    }
+    return distance_m_for_display(seg.start_lat_deg, seg.start_lon_deg,
+                                  seg.end_lat_deg, seg.end_lon_deg);
+  }
+
+  if (seg.polyline.size() >= 2) {
+    const double m = polyline_total_distance_m(seg.polyline);
+    if (std::isfinite(m) && m >= 0.0)
+      return m;
+  }
+
+  if (!llh_is_valid(seg.start_lat_deg, seg.start_lon_deg) ||
+      !llh_is_valid(seg.end_lat_deg, seg.end_lon_deg)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  return distance_m_for_display(seg.start_lat_deg, seg.start_lon_deg,
+                                seg.end_lat_deg, seg.end_lon_deg);
+}
+
+double segment_remaining_from_receiver_m(const MapOsmPanelSegment &seg,
+                                         double rx_lat_deg,
+                                         double rx_lon_deg) {
+  if (!llh_is_valid(rx_lat_deg, rx_lon_deg) ||
+      !llh_is_valid(seg.end_lat_deg, seg.end_lon_deg)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+
+  if (seg.mode == MapOsmPanelSegment::PathMode::Line) {
+    return distance_m_for_display(rx_lat_deg, rx_lon_deg, seg.end_lat_deg,
+                                  seg.end_lon_deg);
+  }
+
+  const double direct_m =
+      distance_m_for_display(rx_lat_deg, rx_lon_deg, seg.end_lat_deg,
+                             seg.end_lon_deg);
+
+  if (seg.polyline.size() >= 2) {
+    const double remain =
+        polyline_remaining_from_pos_m(seg.polyline, rx_lat_deg, rx_lon_deg);
+    if (std::isfinite(remain) && remain >= 0.0) {
+      return std::max(remain, direct_m);
+    }
+  }
+
+  return direct_m;
+}
+
+double preview_full_distance_m(const MapOsmPanelInput &in) {
+  if (!llh_is_valid(in.preview_start_lat_deg, in.preview_start_lon_deg) ||
+      !llh_is_valid(in.preview_end_lat_deg, in.preview_end_lon_deg)) {
+    return std::numeric_limits<double>::quiet_NaN();
+  }
+  if (in.preview_mode == MapOsmPanelSegment::PathMode::Line) {
+    return distance_m_for_display(in.preview_start_lat_deg, in.preview_start_lon_deg,
+                                  in.preview_end_lat_deg, in.preview_end_lon_deg);
+  }
+  if (in.preview_polyline && in.preview_polyline->size() >= 2) {
+    const double m = polyline_total_distance_m(*in.preview_polyline);
+    if (std::isfinite(m) && m >= 0.0)
+      return m;
+  }
+  return distance_m_for_display(in.preview_start_lat_deg, in.preview_start_lon_deg,
+                                in.preview_end_lat_deg, in.preview_end_lon_deg);
+}
+
+QRect draw_osm_scale_bar(QPainter &p, const MapOsmPanelInput &in) {
+  if (in.panel.width() < 120 || in.panel.height() < 120)
+    return QRect();
+
+  const double center_lat_deg = osm_world_y_to_lat(in.osm_center_px_y, in.osm_zoom);
+  const double world_size_px = osm_world_size_for_zoom(in.osm_zoom);
+  const double m_per_px =
+      std::cos(center_lat_deg * M_PI / 180.0) * (2.0 * M_PI * 6378137.0) /
+      world_size_px;
+  if (!std::isfinite(m_per_px) || m_per_px <= 0.0)
+    return QRect();
+
+  const double target_px = 120.0;
+  const double raw_m = m_per_px * target_px;
+  if (!std::isfinite(raw_m) || raw_m <= 0.0)
+    return QRect();
+
+  const double p10 = std::pow(10.0, std::floor(std::log10(raw_m)));
+  const double candidates[] = {1.0 * p10, 2.0 * p10, 5.0 * p10,
+                               10.0 * p10};
+  double bar_m = candidates[0];
+  for (double c : candidates) {
+    if (c <= raw_m)
+      bar_m = c;
+  }
+  if (bar_m <= 0.0)
+    return QRect();
+
+  const int bar_px = (int)std::lround(bar_m / m_per_px);
+  if (bar_px < 24)
+    return QRect();
+
+  QString label;
+  if (bar_m >= 1000.0) {
+    const double km = bar_m * 0.001;
+    int dec = 0;
+    if (km < 10.0)
+      dec = 2;
+    else if (km < 100.0)
+      dec = 1;
+    label = QString("%1 km").arg(km, 0, 'f', dec);
+  } else {
+    label = QString("%1 m").arg((int)std::lround(bar_m));
+  }
+
+  const int left_pad = 16;
+  const int bottom_pad = in.running_ui ? 104 : 78;
+  const int base_x = in.panel.x() + left_pad;
+  const int base_y = in.panel.y() + in.panel.height() - bottom_pad;
+
+  const QFont old_font = p.font();
+  QFont f = old_font;
+  f.setPointSize(std::max(9, old_font.pointSize() > 0 ? old_font.pointSize() - 1 : 9));
+  f.setBold(in.scale_ruler_enabled);
+  p.setFont(f);
+  QFontMetrics fm(f);
+  const int label_h = fm.height();
+  const int label_w = fm.horizontalAdvance(label);
+
+  const QRect bg_rect(base_x - 8, base_y - label_h - 14,
+                      std::max(bar_px + 16, label_w + 16), label_h + 18);
+  p.setRenderHint(QPainter::Antialiasing, true);
+  p.setPen(QPen(in.scale_ruler_enabled ? QColor(127, 240, 189, 220)
+                                       : QColor(180, 200, 220, 185),
+                in.scale_ruler_enabled ? 2 : 1));
+  p.setBrush(in.scale_ruler_enabled ? QColor(8, 34, 28, 228)
+                                    : (in.dark_map_mode ? QColor(7, 15, 26, 210)
+                                                        : QColor(9, 20, 35, 210)));
+  p.drawRoundedRect(bg_rect, 6, 6);
+
+  const QColor scale_color = in.dark_map_mode ? QColor("#eef4ff")
+                                              : QColor("#f4f8ff");
+  p.setPen(QPen(scale_color, 2));
+  p.drawLine(base_x, base_y - 8, base_x + bar_px, base_y - 8);
+  p.drawLine(base_x, base_y - 12, base_x, base_y - 4);
+  p.drawLine(base_x + bar_px, base_y - 12, base_x + bar_px, base_y - 4);
+
+  p.setPen(scale_color);
+  p.drawText(QRect(base_x, base_y - label_h - 12,
+                   std::max(bar_px, label_w), label_h),
+             Qt::AlignLeft | Qt::AlignVCenter, label);
+  p.setRenderHint(QPainter::Antialiasing, false);
+  p.setFont(old_font);
+  return bg_rect;
+}
+
+void draw_scale_ruler_overlay(QPainter &p, const MapOsmPanelInput &in) {
+  if (!in.scale_ruler_enabled || !in.scale_ruler_has_start)
+    return;
+
+  QPoint a;
+  if (!draw_screen_point(in, in.scale_ruler_start_lat_deg,
+                         in.scale_ruler_start_lon_deg, &a)) {
+    return;
+  }
+
+  p.setRenderHint(QPainter::Antialiasing, true);
+  p.setPen(QPen(QColor("#7ff0bd"), 2));
+  p.setBrush(QColor("#7ff0bd"));
+  p.drawEllipse(a, 5, 5);
+
+  if (in.scale_ruler_has_end) {
+    QPoint b;
+    if (draw_screen_point(in, in.scale_ruler_end_lat_deg,
+                          in.scale_ruler_end_lon_deg, &b)) {
+      QPen line_pen(QColor("#7ff0bd"), 2,
+                    in.scale_ruler_end_fixed ? Qt::SolidLine : Qt::DashLine,
+                    Qt::RoundCap, Qt::RoundJoin);
+      p.setPen(line_pen);
+      p.setBrush(Qt::NoBrush);
+      p.drawLine(a, b);
+
+      p.setPen(QPen(QColor("#7ff0bd"), 2));
+      p.setBrush(QColor("#7ff0bd"));
+      p.drawEllipse(b, 5, 5);
+
+      const double d_m = distance_m_for_display(
+          in.scale_ruler_start_lat_deg, in.scale_ruler_start_lon_deg,
+          in.scale_ruler_end_lat_deg, in.scale_ruler_end_lon_deg);
+      if (std::isfinite(d_m) && d_m >= 0.0) {
+        const double d_km = d_m * 0.001;
+        int dec = 0;
+        if (d_km < 10.0)
+          dec = 2;
+        else if (d_km < 100.0)
+          dec = 1;
+        QString txt =
+          (in.language == GuiLanguage::ZhTw)
+                ? QString::fromUtf8("量測 %1 公里").arg(d_km, 0, 'f', dec)
+                : QString("RULER %1 km").arg(d_km, 0, 'f', dec);
+
+        QFont old_font = p.font();
+        QFont f = old_font;
+        f.setPointSize(std::max(9, old_font.pointSize() > 0
+                                       ? old_font.pointSize() - 1
+                                       : 9));
+        p.setFont(f);
+        QFontMetrics fm(f);
+        const int w = fm.horizontalAdvance(txt) + 14;
+        const int h = fm.height() + 8;
+        const QPoint m((a.x() + b.x()) / 2, (a.y() + b.y()) / 2);
+        QRect tag(m.x() - w / 2, m.y() - h - 8, w, h);
+        tag.translate(0, -4);
+        tag = tag.intersected(in.panel.adjusted(6, 6, -6, -6));
+
+        p.setPen(QPen(QColor(127, 240, 189, 220), 1));
+        p.setBrush(QColor(8, 30, 24, 220));
+        p.drawRoundedRect(tag, 6, 6);
+        p.setPen(QColor("#dffff2"));
+        p.drawText(tag, Qt::AlignCenter, txt);
+        p.setFont(old_font);
+      }
+    }
+  }
+  p.setRenderHint(QPainter::Antialiasing, false);
 }
 
 } // namespace
@@ -95,6 +431,7 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
     out->search_return_btn_rect = QRect();
     out->osm_stop_btn_rect = QRect();
     out->osm_runtime_rect = QRect();
+    out->osm_scale_bar_rect = QRect();
     out->status_badge_rects.clear();
   }
 
@@ -253,7 +590,78 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
     }
   }
 
+  const QRect scale_bar_rect = draw_osm_scale_bar(p, in);
+  draw_scale_ruler_overlay(p, in);
+
   long long elapsed_sec = in.running_ui ? in.elapsed_sec : 0;
+  bool show_target_distance = false;
+  double target_distance_km = 0.0;
+  if (in.running_ui && in.receiver_valid &&
+      llh_is_valid(in.receiver_lat_deg, in.receiver_lon_deg)) {
+    double remain_m = 0.0;
+    bool has_remain = false;
+
+    int exec_idx = -1;
+    for (size_t i = 0; i < segs.size(); ++i) {
+      if (segs[i].state == MapOsmPanelSegment::SegmentState::Executing) {
+        exec_idx = (int)i;
+        break;
+      }
+    }
+
+    if (exec_idx >= 0) {
+      const double exec_remain = segment_remaining_from_receiver_m(
+          segs[(size_t)exec_idx], in.receiver_lat_deg, in.receiver_lon_deg);
+      if (std::isfinite(exec_remain) && exec_remain >= 0.0) {
+        remain_m += exec_remain;
+        has_remain = true;
+      }
+      for (size_t i = (size_t)exec_idx + 1; i < segs.size(); ++i) {
+        const double seg_full = segment_full_distance_m(segs[i]);
+        if (std::isfinite(seg_full) && seg_full >= 0.0) {
+          remain_m += seg_full;
+          has_remain = true;
+        }
+      }
+    } else if (!segs.empty()) {
+      const double first_remain = segment_remaining_from_receiver_m(
+          segs.front(), in.receiver_lat_deg, in.receiver_lon_deg);
+      if (std::isfinite(first_remain) && first_remain >= 0.0) {
+        remain_m += first_remain;
+        has_remain = true;
+      }
+      for (size_t i = 1; i < segs.size(); ++i) {
+        const double seg_full = segment_full_distance_m(segs[i]);
+        if (std::isfinite(seg_full) && seg_full >= 0.0) {
+          remain_m += seg_full;
+          has_remain = true;
+        }
+      }
+    }
+
+    if (in.has_preview_segment &&
+        llh_is_valid(in.preview_end_lat_deg, in.preview_end_lon_deg)) {
+      double preview_m = std::numeric_limits<double>::quiet_NaN();
+      if (has_remain) {
+        preview_m = preview_full_distance_m(in);
+      } else {
+        // Preview distance should represent anchor->target real route length,
+        // not a nearest-point projection that can under-report on looped roads.
+        preview_m = preview_full_distance_m(in);
+      }
+      if (std::isfinite(preview_m) && preview_m >= 0.0) {
+        remain_m += preview_m;
+        has_remain = true;
+      }
+    }
+
+    if (has_remain && std::isfinite(remain_m) && remain_m >= 0.0 &&
+        remain_m <= 20000000.0) {
+      show_target_distance = true;
+      target_distance_km = remain_m * 0.001;
+    }
+  }
+
   MapOsmControlsInput controls_in;
   controls_in.panel = in.panel;
   controls_in.language = in.language;
@@ -270,7 +678,9 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
   controls_in.nfz_layer_visible = in.nfz_layer_visible;
   controls_in.tx_active = in.tx_active;
   controls_in.elapsed_sec = elapsed_sec;
-    controls_in.force_stop_preview = in.force_stop_preview;
+  controls_in.show_target_distance = show_target_distance;
+  controls_in.target_distance_km = target_distance_km;
+  controls_in.force_stop_preview = in.force_stop_preview;
 
   MapOsmControlsState controls_out;
   map_osm_draw_controls(p, controls_in, &controls_out);
@@ -283,6 +693,7 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
     out->search_return_btn_rect = controls_out.search_return_btn_rect;
     out->osm_stop_btn_rect = controls_out.osm_stop_btn_rect;
     out->osm_runtime_rect = controls_out.osm_runtime_rect;
+    out->osm_scale_bar_rect = scale_bar_rect;
     out->nfz_legend_row_rects = controls_out.nfz_legend_row_rects;
   }
 

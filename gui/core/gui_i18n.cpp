@@ -198,6 +198,14 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
   if (std::strcmp(key, "osm.init_time") == 0) {
     return zh ? QString::fromUtf8("初始化中") : QString("INIT TIME");
   }
+  if (std::strcmp(key, "osm.target_distance_fmt") == 0) {
+    return zh ? QString::fromUtf8("距離目標 %1 公里")
+              : QString("TO TARGET %1 km");
+  }
+  if (std::strcmp(key, "osm.remaining_distance_fmt") == 0) {
+    return zh ? QString::fromUtf8("剩餘距離 %1 公里")
+              : QString("REMAIN %1 km");
+  }
   if (std::strcmp(key, "osm.legend_restricted_core") == 0) {
     return zh ? QString::fromUtf8("禁飛區") : QString("Core Restricted (Red)");
   }
