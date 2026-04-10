@@ -363,136 +363,119 @@ typedef struct {
 
 static gps_nav_state_t g_gps_nav_state[GPS_EPH_SLOTS];
 
-static void gps_fill_subframe_payload(int sf_id, int week,
-                                      const gps_ephemeris_t *e,
-                                      uint32_t sbf[10])
+static void gps_frame_from_ephemeris(const gps_ephemeris_t *e, int week,
+                                     GPS_L1CA_Frame *f)
 {
-    if (!e || e->prn == 0 || sf_id < 1 || sf_id > 5)
+    if (!e || !f)
         return;
 
-    uint32_t wn = (uint32_t)(week & 0x3FF);
-    uint32_t toe = (uint32_t)llround(e->toe / 16.0) & 0xFFFFu;
-    uint32_t toc = (uint32_t)llround((double)e->toc / 16.0) & 0xFFFFu;
-    uint32_t iode = (uint32_t)(e->iode & 0xFF);
-    uint32_t iodc = (uint32_t)(e->iodc & 0x3FF);
+    memset(f, 0, sizeof(*f));
+    f->wn = (uint32_t)(week & 0x3FF);
+    f->toe = (uint32_t)llround(e->toe / 16.0) & 0xFFFFu;
+    f->toc = (uint32_t)llround((double)e->toc / 16.0) & 0xFFFFu;
+    f->iode = (uint32_t)(e->iode & 0xFF);
+    f->iodc = (uint32_t)(e->iodc & 0x3FF);
 
-    int32_t deltan = (int32_t)llround(rad_to_sc(e->deltan) / ldexp(1.0, -43));
-    int32_t cuc = (int32_t)llround(e->cuc / ldexp(1.0, -29));
-    int32_t cus = (int32_t)llround(e->cus / ldexp(1.0, -29));
-    int32_t cic = (int32_t)llround(e->cic / ldexp(1.0, -29));
-    int32_t cis = (int32_t)llround(e->cis / ldexp(1.0, -29));
-    int32_t crc = (int32_t)llround(e->crc / ldexp(1.0, -5));
-    int32_t crs = (int32_t)llround(e->crs / ldexp(1.0, -5));
-    uint32_t ecc = (uint32_t)llround(e->e / ldexp(1.0, -33));
-    uint32_t sqrta = (uint32_t)llround(e->sqrtA / ldexp(1.0, -19));
-    int32_t m0 = (int32_t)llround(rad_to_sc(e->M0) / ldexp(1.0, -31));
-    int32_t omg0 = (int32_t)llround(rad_to_sc(e->omega0) / ldexp(1.0, -31));
-    int32_t inc0 = (int32_t)llround(rad_to_sc(e->i0) / ldexp(1.0, -31));
-    int32_t aop = (int32_t)llround(rad_to_sc(e->w) / ldexp(1.0, -31));
-    int32_t omgdot = (int32_t)llround(rad_to_sc(e->omegadot) / ldexp(1.0, -43));
-    int32_t idot = (int32_t)llround(rad_to_sc(e->idot) / ldexp(1.0, -43));
-    int32_t af0 = (int32_t)llround(e->af0 / ldexp(1.0, -31));
-    int32_t af1 = (int32_t)llround(e->af1 / ldexp(1.0, -43));
-    int32_t af2 = (int32_t)llround(e->af2 / ldexp(1.0, -55));
-    int32_t tgd = (int32_t)llround(e->tgd / ldexp(1.0, -31));
+    f->deltan = (int32_t)llround(rad_to_sc(e->deltan) / ldexp(1.0, -43));
+    f->cuc = (int32_t)llround(e->cuc / ldexp(1.0, -29));
+    f->cus = (int32_t)llround(e->cus / ldexp(1.0, -29));
+    f->cic = (int32_t)llround(e->cic / ldexp(1.0, -29));
+    f->cis = (int32_t)llround(e->cis / ldexp(1.0, -29));
+    f->crc = (int32_t)llround(e->crc / ldexp(1.0, -5));
+    f->crs = (int32_t)llround(e->crs / ldexp(1.0, -5));
+    f->ecc = (uint32_t)llround(e->e / ldexp(1.0, -33));
+    f->sqrta = (uint32_t)llround(e->sqrtA / ldexp(1.0, -19));
+    f->m0 = (int32_t)llround(rad_to_sc(e->M0) / ldexp(1.0, -31));
+    f->omg0 = (int32_t)llround(rad_to_sc(e->omega0) / ldexp(1.0, -31));
+    f->inc0 = (int32_t)llround(rad_to_sc(e->i0) / ldexp(1.0, -31));
+    f->aop = (int32_t)llround(rad_to_sc(e->w) / ldexp(1.0, -31));
+    f->omgdot = (int32_t)llround(rad_to_sc(e->omegadot) / ldexp(1.0, -43));
+    f->idot = (int32_t)llround(rad_to_sc(e->idot) / ldexp(1.0, -43));
+    f->af0 = (int32_t)llround(e->af0 / ldexp(1.0, -31));
+    f->af1 = (int32_t)llround(e->af1 / ldexp(1.0, -43));
+    f->af2 = (int32_t)llround(e->af2 / ldexp(1.0, -55));
+    f->tgd = (int32_t)llround(e->tgd / ldexp(1.0, -31));
 
-    uint32_t svhlth = (uint32_t)(e->health & 0x3F);
-    uint32_t codeL2 = (uint32_t)(e->codeL2 & 0x3);
-    uint32_t ura = (uint32_t)(e->ura & 0xF);
-
-    uint32_t wna = (uint32_t)(week & 0xFF);
-    uint32_t toa = (uint32_t)llround(e->toe / 4096.0) & 0xFF;
-    uint32_t dataId = 1u;
-    uint32_t sbf4_page25_svId = 63u;
-    uint32_t sbf5_page25_svId = 51u;
-
-    if (sf_id == 1) {
-        sbf[0] = 0x8B0000u << 6;
-        sbf[1] = 0x1u << 8;
-        sbf[2] = ((wn & 0x3FFu) << 20) | ((codeL2 & 0x3u) << 18) | ((ura & 0xFu) << 14) |
-                 ((svhlth & 0x3Fu) << 8) | (((iodc >> 8) & 0x3u) << 6);
-        sbf[3] = 0u;
-        sbf[4] = 0u;
-        sbf[5] = 0u;
-        sbf[6] = ((uint32_t)tgd & 0xFFu) << 6;
-        sbf[7] = ((iodc & 0xFFu) << 22) | ((toc & 0xFFFFu) << 6);
-        sbf[8] = (((uint32_t)af2 & 0xFFu) << 22) | (((uint32_t)af1 & 0xFFFFu) << 6);
-        sbf[9] = (((uint32_t)af0 & 0x3FFFFFu) << 8);
-    } else if (sf_id == 2) {
-        sbf[0] = 0x8B0000u << 6;
-        sbf[1] = 0x2u << 8;
-        sbf[2] = ((iode & 0xFFu) << 22) | (((uint32_t)crs & 0xFFFFu) << 6);
-        sbf[3] = (((uint32_t)deltan & 0xFFFFu) << 14) | ((((uint32_t)m0 >> 24) & 0xFFu) << 6);
-        sbf[4] = (((uint32_t)m0 & 0xFFFFFFu) << 6);
-        sbf[5] = (((uint32_t)cuc & 0xFFFFu) << 14) | (((ecc >> 24) & 0xFFu) << 6);
-        sbf[6] = ((ecc & 0xFFFFFFu) << 6);
-        sbf[7] = (((uint32_t)cus & 0xFFFFu) << 14) | (((sqrta >> 24) & 0xFFu) << 6);
-        sbf[8] = ((sqrta & 0xFFFFFFu) << 6);
-        sbf[9] = ((toe & 0xFFFFu) << 14);
-    } else if (sf_id == 3) {
-        sbf[0] = 0x8B0000u << 6;
-        sbf[1] = 0x3u << 8;
-        sbf[2] = (((uint32_t)cic & 0xFFFFu) << 14) | ((((uint32_t)omg0 >> 24) & 0xFFu) << 6);
-        sbf[3] = (((uint32_t)omg0 & 0xFFFFFFu) << 6);
-        sbf[4] = (((uint32_t)cis & 0xFFFFu) << 14) | ((((uint32_t)inc0 >> 24) & 0xFFu) << 6);
-        sbf[5] = (((uint32_t)inc0 & 0xFFFFFFu) << 6);
-        sbf[6] = (((uint32_t)crc & 0xFFFFu) << 14) | ((((uint32_t)aop >> 24) & 0xFFu) << 6);
-        sbf[7] = (((uint32_t)aop & 0xFFFFFFu) << 6);
-        sbf[8] = (((uint32_t)omgdot & 0xFFFFFFu) << 6);
-        sbf[9] = ((iode & 0xFFu) << 22) | (((uint32_t)idot & 0x3FFFu) << 8);
-    } else if (sf_id == 4) {
-        sbf[0] = 0x8B0000u << 6;
-        sbf[1] = 0x4u << 8;
-        sbf[2] = (dataId << 28) | (sbf4_page25_svId << 22);
-        sbf[3] = 0u;
-        sbf[4] = 0u;
-        sbf[5] = 0u;
-        sbf[6] = 0u;
-        sbf[7] = 0u;
-        sbf[8] = 0u;
-        sbf[9] = 0u;
-    } else {
-        sbf[0] = 0x8B0000u << 6;
-        sbf[1] = 0x5u << 8;
-        sbf[2] = (dataId << 28) | (sbf5_page25_svId << 22) | ((toa & 0xFFu) << 14) | ((wna & 0xFFu) << 6);
-        sbf[3] = 0u;
-        sbf[4] = 0u;
-        sbf[5] = 0u;
-        sbf[6] = 0u;
-        sbf[7] = 0u;
-        sbf[8] = 0u;
-        sbf[9] = 0u;
-    }
+    f->svhlth = (uint32_t)(e->health & 0x3F);
+    f->codeL2 = (uint32_t)(e->codeL2 & 0x3);
+    f->ura = (uint32_t)(e->ura & 0xF);
+    f->wna = (uint32_t)(week & 0xFF);
+    f->toa = (uint32_t)llround(e->toe / 4096.0) & 0xFF;
+    f->dataId = 1u;
+    f->sbf4_page25_svId = 63u;
+    f->sbf5_page25_svId = 51u;
 }
 
-static void gps_build_frame_words(const gps_ephemeris_t *e, int week,
-                                  double frame_start,
-                                  uint32_t frame_words[5][10],
-                                  uint32_t prev_seed)
+static void build_subframe1_l1ca(uint32_t sbf[10], const GPS_L1CA_Frame *f)
 {
-    uint32_t prevwrd = prev_seed;
-    uint32_t tow0 = (uint32_t)floor(frame_start / 6.0);
+    sbf[0] = 0x8B0000u << 6;
+    sbf[1] = 0x1u << 8;
+    sbf[2] = ((f->wn & 0x3FFu) << 20) | ((f->codeL2 & 0x3u) << 18) | ((f->ura & 0xFu) << 14) |
+             ((f->svhlth & 0x3Fu) << 8) | (((f->iodc >> 8) & 0x3u) << 6);
+    sbf[3] = 0u;
+    sbf[4] = 0u;
+    sbf[5] = 0u;
+    sbf[6] = ((uint32_t)f->tgd & 0xFFu) << 6;
+    sbf[7] = ((f->iodc & 0xFFu) << 22) | ((f->toc & 0xFFFFu) << 6);
+    sbf[8] = (((uint32_t)f->af2 & 0xFFu) << 22) | (((uint32_t)f->af1 & 0xFFFFu) << 6);
+    sbf[9] = (((uint32_t)f->af0 & 0x3FFFFFu) << 8);
+}
 
-    for (int isbf = 0; isbf < 5; ++isbf) {
-        uint32_t sbf[10] = {0};
-        gps_fill_subframe_payload(isbf + 1, week, e, sbf);
+static void build_subframe2_l1ca(uint32_t sbf[10], const GPS_L1CA_Frame *f)
+{
+    sbf[0] = 0x8B0000u << 6;
+    sbf[1] = 0x2u << 8;
+    sbf[2] = ((f->iode & 0xFFu) << 22) | (((uint32_t)f->crs & 0xFFFFu) << 6);
+    sbf[3] = (((uint32_t)f->deltan & 0xFFFFu) << 14) | ((((uint32_t)f->m0 >> 24) & 0xFFu) << 6);
+    sbf[4] = (((uint32_t)f->m0 & 0xFFFFFFu) << 6);
+    sbf[5] = (((uint32_t)f->cuc & 0xFFFFu) << 14) | (((f->ecc >> 24) & 0xFFu) << 6);
+    sbf[6] = ((f->ecc & 0xFFFFFFu) << 6);
+    sbf[7] = (((uint32_t)f->cus & 0xFFFFu) << 14) | (((f->sqrta >> 24) & 0xFFu) << 6);
+    sbf[8] = ((f->sqrta & 0xFFFFFFu) << 6);
+    sbf[9] = ((f->toe & 0xFFFFu) << 14);
+}
 
-        for (int iwrd = 0; iwrd < 10; ++iwrd) {
-            uint32_t sbfwrd = sbf[iwrd];
+static void build_subframe3_l1ca(uint32_t sbf[10], const GPS_L1CA_Frame *f)
+{
+    sbf[0] = 0x8B0000u << 6;
+    sbf[1] = 0x3u << 8;
+    sbf[2] = (((uint32_t)f->cic & 0xFFFFu) << 14) | ((((uint32_t)f->omg0 >> 24) & 0xFFu) << 6);
+    sbf[3] = (((uint32_t)f->omg0 & 0xFFFFFFu) << 6);
+    sbf[4] = (((uint32_t)f->cis & 0xFFFFu) << 14) | ((((uint32_t)f->inc0 >> 24) & 0xFFu) << 6);
+    sbf[5] = (((uint32_t)f->inc0 & 0xFFFFFFu) << 6);
+    sbf[6] = (((uint32_t)f->crc & 0xFFFFu) << 14) | ((((uint32_t)f->aop >> 24) & 0xFFu) << 6);
+    sbf[7] = (((uint32_t)f->aop & 0xFFFFFFu) << 6);
+    sbf[8] = (((uint32_t)f->omgdot & 0xFFFFFFu) << 6);
+    sbf[9] = ((f->iode & 0xFFu) << 22) | (((uint32_t)f->idot & 0x3FFFu) << 8);
+}
 
-            /* gpssim generateNavMsg(): HOW word carries TOW-count for next subframe. */
-            if (iwrd == 1) {
-                uint32_t tow = tow0 + (uint32_t)(isbf + 1);
-                sbfwrd |= (tow & 0x1FFFFu) << 13;
-            }
+static void build_subframe4_l1ca(uint32_t sbf[10], const GPS_L1CA_Frame *f)
+{
+    sbf[0] = 0x8B0000u << 6;
+    sbf[1] = 0x4u << 8;
+    sbf[2] = (f->dataId << 28) | (f->sbf4_page25_svId << 22);
+    sbf[3] = 0u;
+    sbf[4] = 0u;
+    sbf[5] = 0u;
+    sbf[6] = 0u;
+    sbf[7] = 0u;
+    sbf[8] = 0u;
+    sbf[9] = 0u;
+}
 
-            sbfwrd |= (prevwrd << 30) & 0xC0000000u;
-            int nib = ((iwrd == 1) || (iwrd == 9)) ? 1 : 0;
-            uint32_t outw = gps_compute_checksum(sbfwrd, nib);
-            frame_words[isbf][iwrd] = outw;
-            prevwrd = outw;
-        }
-    }
+static void build_subframe5_l1ca(uint32_t sbf[10], const GPS_L1CA_Frame *f)
+{
+    sbf[0] = 0x8B0000u << 6;
+    sbf[1] = 0x5u << 8;
+    sbf[2] = (f->dataId << 28) | (f->sbf5_page25_svId << 22) |
+             ((f->toa & 0xFFu) << 14) | ((f->wna & 0xFFu) << 6);
+    sbf[3] = 0u;
+    sbf[4] = 0u;
+    sbf[5] = 0u;
+    sbf[6] = 0u;
+    sbf[7] = 0u;
+    sbf[8] = 0u;
+    sbf[9] = 0u;
 }
 
 static uint32_t gps_prev_seed_for_frame(int prn, int week, double frame_start)
@@ -519,23 +502,58 @@ static void gps_update_frame_state(int prn, int week, double frame_start,
 }
 
 static void build_subframe_gps(int prn, int sf_id, int week, double sow,
-                               const gps_ephemeris_t *e, uint8_t *out)
+                               const GPS_L1CA_Frame *f, uint8_t *out)
 {
     memset(out, 0, SF_STREAM_LEN);
 
-    if (!e || e->prn == 0 || sf_id < 1 || sf_id > 5)
+    if (!f || sf_id < 1 || sf_id > 5)
         return;
 
     double frame_start = floor(sow / 30.0) * 30.0;
-    uint32_t frame_words[5][10] = {{0}};
     uint32_t prev_seed = gps_prev_seed_for_frame(prn, week, frame_start);
-    gps_build_frame_words(e, week, frame_start, frame_words, prev_seed);
-    gps_update_frame_state(prn, week, frame_start, frame_words[4][9]);
+    uint32_t prevwrd = prev_seed;
+    uint32_t tow0 = (uint32_t)floor(frame_start / 6.0);
+    uint32_t sbf[10] = {0};
+    uint32_t selected_words[10] = {0};
 
-    int sidx = sf_id - 1;
-    for (int iwrd = 0; iwrd < 10; ++iwrd) {
-        put_word(out, iwrd * 30, frame_words[sidx][iwrd]);
+    for (int isbf = 1; isbf <= 5; ++isbf) {
+        if (isbf == 1) {
+            build_subframe1_l1ca(sbf, f);
+        } else if (isbf == 2) {
+            build_subframe2_l1ca(sbf, f);
+        } else if (isbf == 3) {
+            build_subframe3_l1ca(sbf, f);
+        } else if (isbf == 4) {
+            build_subframe4_l1ca(sbf, f);
+        } else if (isbf == 5) {
+            build_subframe5_l1ca(sbf, f);
+        } else {
+            memset(sbf, 0, sizeof(sbf));
+        }
+
+        for (int iwrd = 0; iwrd < 10; ++iwrd) {
+            uint32_t sbfwrd = sbf[iwrd];
+
+            if (iwrd == 1) {
+                uint32_t tow = tow0 + (uint32_t)isbf;
+                sbfwrd |= (tow & 0x1FFFFu) << 13;
+            }
+
+            sbfwrd |= (prevwrd << 30) & 0xC0000000u;
+            {
+                int nib = ((iwrd == 1) || (iwrd == 9)) ? 1 : 0;
+                uint32_t outw = gps_compute_checksum(sbfwrd, nib);
+                if (isbf == sf_id)
+                    selected_words[iwrd] = outw;
+                prevwrd = outw;
+            }
+        }
     }
+
+    gps_update_frame_state(prn, week, frame_start, prevwrd);
+
+    for (int iwrd = 0; iwrd < 10; ++iwrd)
+        put_word(out, iwrd * 30, selected_words[iwrd]);
 }
 
 /* --------------------------- 根據時間取得子幀 bit 流 (300 bits) ------------------------------*/
@@ -577,7 +595,14 @@ void get_subframe_bits_gps(int prn,int sf_id,int week,double sow,double frame_le
     }
 
     const gps_ephemeris_t *e = &gps_eph[prn];
-    build_subframe_gps(prn, sid, week, sow, e, out);
+    if (!e || e->prn == 0) {
+        memset(out, 0, SF_STREAM_LEN);
+        return;
+    }
+
+    GPS_L1CA_Frame frame;
+    gps_frame_from_ephemeris(e, week, &frame);
+    build_subframe_gps(prn, sid, week, sow, &frame, out);
 }
 
 /* --------------------------- Dump broadcast ephemeris parameters for a given PRN ------------------------------*/

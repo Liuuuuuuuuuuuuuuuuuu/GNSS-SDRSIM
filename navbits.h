@@ -39,6 +39,41 @@ typedef struct {
     int32_t  cis;
 } B1I_D1_Frame;
 
+typedef struct {
+    uint32_t wn;
+    uint32_t toe;
+    uint32_t toc;
+    uint32_t iode;
+    uint32_t iodc;
+    int32_t  deltan;
+    int32_t  cuc;
+    int32_t  cus;
+    int32_t  cic;
+    int32_t  cis;
+    int32_t  crc;
+    int32_t  crs;
+    uint32_t ecc;
+    uint32_t sqrta;
+    int32_t  m0;
+    int32_t  omg0;
+    int32_t  inc0;
+    int32_t  aop;
+    int32_t  omgdot;
+    int32_t  idot;
+    int32_t  af0;
+    int32_t  af1;
+    int32_t  af2;
+    int32_t  tgd;
+    uint32_t svhlth;
+    uint32_t codeL2;
+    uint32_t ura;
+    uint32_t wna;
+    uint32_t toa;
+    uint32_t dataId;
+    uint32_t sbf4_page25_svId;
+    uint32_t sbf5_page25_svId;
+} GPS_L1CA_Frame;
+
 static const double a_scale[4] = {
     1.0/(double)(1<<30),
     1.0/(double)(1<<27),
