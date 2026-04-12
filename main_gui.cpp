@@ -1,35 +1,37 @@
 #include "main_gui.h"
-#include "gui/layout/control_layout.h"
-#include "gui/control/control_logic.h"
-#include "gui/core/control_state.h"
+#include "gui/layout/geometry/control_layout.h"
+#include "gui/control/panel/control_logic.h"
+#include "gui/core/state/control_state.h"
 #include "gui/nfz/dji_nfz.h"
+#include "gui/nfz/dji_detect.h"
 #include "gui/geo/geo_io.h"
-#include "gui/core/gui_screen_utils.h"
-#include "gui/map/map_fallback_land.h"
-#include "gui/map/map_overlay_utils.h"
-#include "gui/map/map_hover_utils.h"
-#include "gui/layout/map_control_panel_utils.h"
-#include "gui/layout/map_monitor_panels_utils.h"
-#include "gui/core/gui_i18n.h"
-#include "gui/core/gui_font_manager.h"
-#include "gui/core/gui_language_runtime_utils.h"
-#include "gui/map/map_osm_interaction_utils.h"
-#include "gui/map/map_osm_panel_utils.h"
-#include "gui/map/map_render_utils.h"
-#include "gui/map/map_sat_render_utils.h"
-#include "gui/map/map_route_utils.h"
-#include "gui/map/map_search_utils.h"
-#include "gui/map/map_search_ui_utils.h"
-#include "gui/map/map_tile_utils.h"
+#include "gui/core/runtime/gui_screen_utils.h"
+#include "gui/map/render/map_fallback_land.h"
+#include "gui/map/overlay/map_overlay_utils.h"
+#include "gui/map/overlay/map_hover_utils.h"
+#include "gui/map/overlay/crossbow_overlay.h"
+#include "gui/layout/panels/map_control_panel_utils.h"
+#include "gui/layout/panels/map_monitor_panels_utils.h"
+#include "gui/core/i18n/gui_i18n.h"
+#include "gui/core/i18n/gui_font_manager.h"
+#include "gui/core/runtime/gui_language_runtime_utils.h"
+#include "gui/map/osm/map_osm_interaction_utils.h"
+#include "gui/map/osm/map_osm_panel_utils.h"
+#include "gui/map/render/map_render_utils.h"
+#include "gui/map/render/map_sat_render_utils.h"
+#include "gui/map/route/map_route_utils.h"
+#include "gui/map/search/map_search_utils.h"
+#include "gui/map/search/map_search_ui_utils.h"
+#include "gui/map/osm/map_tile_utils.h"
 #include "gui/nfz/nfz_hit_test_utils.h"
 #include "gui/geo/osm_projection.h"
 #include "gui/path/path_builder.h"
-#include "gui/layout/quad_panel_layout.h"
-#include "gui/core/rf_mode_utils.h"
-#include "gui/core/signal_snapshot.h"
-#include "gui/tutorial/tutorial_interaction_utils.h"
-#include "gui/tutorial/tutorial_overlay_utils.h"
-#include "gui/tutorial/tutorial_flow_utils.h"
+#include "gui/layout/geometry/quad_panel_layout.h"
+#include "gui/core/runtime/rf_mode_utils.h"
+#include "gui/core/state/signal_snapshot.h"
+#include "gui/tutorial/interaction/tutorial_interaction_utils.h"
+#include "gui/tutorial/overlay/tutorial_overlay_utils.h"
+#include "gui/tutorial/flow/tutorial_flow_utils.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -213,6 +215,19 @@ public:
 
     // ======== 新增這兩行來預設開啟 NFZ ========
     dji_nfz_mgr_->set_enabled(true);
+
+    dji_detect_mgr_ = new DjiDetectManager(this, [this](const DjiDetectStatus &st) {
+      dji_detect_ui_detected_ = st.detected;
+      dji_detect_ui_confidence_ = st.confidence;
+      dji_detect_ui_model_ = st.model;
+      dji_detect_ui_source_ = st.source;
+      dji_detect_ui_target_count_ = st.target_count;
+      {
+        std::lock_guard<std::mutex> lk(g_ctrl_mtx);
+        g_ctrl.crossbow_dji_detected = st.detected;
+        g_ctrl.crossbow_dji_confidence = st.confidence;
+      }
+    });
 
     // 新增：設定啟動後 0.5 秒自動抓取當下視角的禁航區
     QTimer::singleShot(500, this,
@@ -474,431 +489,32 @@ public:
     update(osm_panel_rect_);
   }
 
+  void set_selected_llh_centered_public(double lat_deg, double lon_deg,
+                                        double h_m) {
+    if (QThread::currentThread() != this->thread()) {
+      QMetaObject::invokeMethod(
+          this,
+          [this, lat_deg, lon_deg, h_m]() {
+            this->set_selected_llh_centered_public(lat_deg, lon_deg, h_m);
+          },
+          Qt::QueuedConnection);
+      return;
+    }
+    set_selected_llh_direct(lat_deg, lon_deg, h_m, true);
+    notify_nfz_viewport_changed();
+    update(osm_panel_rect_);
+  }
+
 protected:
-  void paintEvent(QPaintEvent *event) override {
-    QPainter p(this);
-    const QRegion dirty_region = event ? event->region() : QRegion(rect());
-    p.setClipRegion(dirty_region);
-    QLinearGradient scene_grad(rect().topLeft(), rect().bottomRight());
-    scene_grad.setColorAt(0.0, QColor("#030712"));
-    scene_grad.setColorAt(0.45, QColor("#0b1b31"));
-    scene_grad.setColorAt(1.0, QColor("#05101f"));
-    p.fillRect(rect(), scene_grad);
+  void paintEvent(QPaintEvent *event) override;
 
-    auto dirty_intersects = [&](const QRect &r) {
-      return dirty_region.intersects(r);
-    };
+  void resizeEvent(QResizeEvent *event) override;
 
-    int win_width = width();
-    int win_height = height();
+  void mousePressEvent(QMouseEvent *event) override;
 
-    // 1. 左半邊全部都是 OSM 地圖
-    QRect osm_rect(0, 0, win_width / 2, win_height);
-    if (dirty_intersects(osm_rect)) {
-      draw_osm_panel(p, osm_rect);
-    }
+  void mouseDoubleClickEvent(QMouseEvent *event) override;
 
-    // 2. 右上角：永遠保留原本的星下點 (Satellite Map)
-    // Always call draw_map_panel and rely on clip region to avoid missed redraws.
-    QRect map_rect(win_width / 2, 0, win_width - win_width / 2, win_height / 2);
-    draw_map_panel(p, map_rect);
-
-    bool running_ui = false;
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      running_ui = g_ctrl.running_ui;
-    }
-
-    bool tutorial_waveform_preview =
-      tutorial_overlay_visible_ && !running_ui &&
-      (tutorial_step_ >= 9 && tutorial_step_ <= 12);
-
-    QRect bottom_right_rect(win_width / 2, win_height / 2,
-                            win_width - win_width / 2,
-                            win_height - win_height / 2);
-
-    // 3. 右下角動態切換：未執行時顯示 Control Panel，執行時顯示四個波形圖
-    if (!running_ui && !tutorial_waveform_preview) {
-        if (dirty_intersects(bottom_right_rect)) {
-        draw_control_panel(p, win_width, win_height);
-        }
-    } else {
-        if (dirty_intersects(bottom_right_rect)) {
-          MapMonitorPanelsInput in;
-          {
-            std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-            in.ctrl = g_ctrl;
-          }
-          in.spec_snap = spec_snap_;
-          in.waterfall_image = wf_.image;
-          in.language = ui_language_;
-
-          map_draw_spectrum_panel(p, win_width, win_height, in);
-          map_draw_waterfall_panel(p, win_width, win_height, in);
-          map_draw_time_panel(p, win_width, win_height, in);
-          map_draw_constellation_panel(p, win_width, win_height, in);
-        }
-    }
-
-    if (tutorial_overlay_visible_ || dirty_intersects(bottom_right_rect) ||
-        dirty_intersects(osm_rect) || dirty_intersects(map_rect)) {
-      draw_tutorial_overlay(p, win_width, win_height);
-    }
-  }
-
-  void resizeEvent(QResizeEvent *event) override {
-    QWidget::resizeEvent(event);
-    layout_overlay_widgets(width(), height());
-    if (alert_overlay_) {
-      alert_overlay_->setGeometry(rect());
-    }
-    update_alert_overlay();
-    map_panel_bootstrap_redraw_done_ = false;
-    update(QRect(width() / 2, 0, width() - width() / 2, height() / 2));
-  }
-
-  void mousePressEvent(QMouseEvent *event) override {
-    bool running_ui = false;
-    bool detailed = false;
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      running_ui = g_ctrl.running_ui;
-      detailed = g_ctrl.show_detailed_ctrl;
-    }
-
-    if (event->button() == Qt::LeftButton) {
-      const bool tutorial_was_visible = tutorial_overlay_visible_;
-
-      // TOC jump: when on the Contents page (step 0), check TOC buttons first
-      if (tutorial_overlay_visible_ && tutorial_step_ == 0) {
-        for (int i = 0; i < 5; ++i) {
-          if (!tutorial_toc_btn_rects_[i].isNull() &&
-              tutorial_toc_btn_rects_[i].contains(event->pos())) {
-            tutorial_step_ = tutorial_toc_btn_targets_[i];
-            tutorial_text_page_ = 0;
-            tutorial_anim_step_anchor_ = -1;
-            tutorial_spotlight_index_ = 0;
-            update();
-            event->accept();
-            return;
-          }
-        }
-      }
-
-      // CONTENTS button (steps 1-7): jump back to TOC
-      if (tutorial_overlay_visible_ && !tutorial_contents_btn_rect_.isNull() &&
-          tutorial_contents_btn_rect_.contains(event->pos())) {
-        tutorial_step_ = 0;
-        tutorial_text_page_ = 0;
-        tutorial_anim_step_anchor_ = -1;
-        tutorial_has_glow_ = false;
-        update();
-        event->accept();
-        return;
-      }
-
-      // Callout click → glow animation at UI element anchor
-      if (tutorial_overlay_visible_) {
-        for (int i = 0; i < (int)tutorial_callout_hit_boxes_.size(); ++i) {
-          if (tutorial_callout_hit_boxes_[i].contains(QPointF(event->pos()))) {
-            tutorial_has_glow_ = true;
-            tutorial_glow_anchor_ = tutorial_callout_hit_anchors_[i];
-            tutorial_glow_start_tp_ = std::chrono::steady_clock::now();
-            tutorial_glow_step_ = tutorial_step_;
-            update();
-            event->accept();
-            return;
-          }
-        }
-      }
-
-      if (tutorial_handle_click(event->pos(), running_ui, tutorial_last_step(),
-                                tutorial_toggle_rect_, tutorial_prev_btn_rect_,
-                                tutorial_next_btn_rect_, tutorial_close_btn_rect_,
-                                &tutorial_enabled_, &tutorial_overlay_visible_,
-                                &tutorial_step_, &tutorial_anim_step_anchor_,
-                                &tutorial_spotlight_index_, &tutorial_text_page_,
-                                &tutorial_text_page_count_,
-                                &tutorial_text_page_anchor_step_,
-                                &tutorial_text_page_anchor_spotlight_)) {
-        if (!tutorial_was_visible && tutorial_overlay_visible_) {
-          wf_.image = QImage();
-          wf_.width = 0;
-          wf_.height = 0;
-          g_gui_reset_waterfall_req.fetch_add(1);
-          update(right_bottom_region());
-        }
-        update();
-        event->accept();
-        return;
-      }
-
-      if (inline_editor_ && inline_editor_->isVisible() &&
-          !inline_editor_->geometry().contains(event->pos())) {
-        commit_inline_edit(true);
-      }
-
-      if (search_results_list_ && search_results_list_->isVisible()) {
-        const QRect list_rect = search_results_list_->geometry();
-        const QRect box_rect = search_box_ ? search_box_->geometry() : QRect();
-        if (map_overlay_click_outside_search(list_rect, box_rect,
-                                             event->pos())) {
-          hide_search_results();
-        }
-      }
-
-      if (lang_btn_rect_.contains(event->pos())) {
-        ui_language_ = gui_runtime_toggle_language(ui_language_);
-        gui_runtime_apply_search_placeholder(search_box_, ui_language_);
-        gui_runtime_apply_language_font(this, ui_language_);
-        update_alert_overlay();
-        update();
-        event->accept();
-        return;
-      }
-
-      if (control_gear_btn_rect_.contains(event->pos())) {
-        open_control_style_dialog();
-        event->accept();
-        return;
-      }
-
-      int value_field = control_value_hit_test(
-          event->pos().x(), event->pos().y(), width(), height(), detailed);
-      if (value_field >= 0) {
-        begin_inline_edit(value_field);
-        event->accept();
-        return;
-      }
-
-      int slider_id = control_slider_hit_test(
-          event->pos().x(), event->pos().y(), width(), height(), detailed);
-      if (slider_id >= 0) {
-        active_control_slider_ = slider_id;
-        if (handle_control_slider_drag(active_control_slider_, event->pos().x(),
-                                       width(), height())) {
-          update(osm_panel_rect_);
-          update(right_bottom_region());
-        }
-        event->accept();
-        return;
-      }
-
-      MapOsmPressRects rects;
-      rects.osm_panel_rect = osm_panel_rect_;
-      rects.osm_scale_bar_rect = osm_scale_bar_rect_;
-      rects.osm_stop_btn_rect = osm_stop_btn_rect_;
-      rects.dark_mode_btn_rect = dark_mode_btn_rect_;
-      rects.search_return_btn_rect = search_return_btn_rect_;
-      rects.nfz_btn_rect = nfz_btn_rect_;
-      rects.back_btn_rect = back_btn_rect_;
-      rects.nfz_legend_row_rects = osm_nfz_legend_row_rects_;
-      rects.show_search_return = show_search_return_;
-
-      MapOsmPressState state;
-      state.dragging_osm = &dragging_osm_;
-      state.drag_moved_osm = &drag_moved_osm_;
-      state.drag_last_pos = &drag_last_pos_;
-
-      MapOsmPressActions actions;
-      actions.toggle_scale_ruler = [this]() {
-        scale_ruler_enabled_ = !scale_ruler_enabled_;
-        if (!scale_ruler_enabled_) {
-          scale_ruler_has_start_ = false;
-          scale_ruler_has_end_ = false;
-          scale_ruler_end_fixed_ = false;
-        }
-      };
-      actions.stop_simulation = [this]() {
-        {
-          std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-          g_ctrl.running_ui = false;
-        }
-        g_runtime_abort = 1;
-        g_gui_stop_req.fetch_add(1);
-        osm_bg_needs_redraw_ = true;
-      };
-      actions.toggle_dark_mode = [this]() {
-        dark_map_mode_ = !dark_map_mode_;
-        osm_bg_needs_redraw_ = true;
-      };
-      actions.restore_search = [this]() {
-        osm_zoom_ = pre_search_zoom_;
-        osm_center_px_x_ = pre_search_center_x_;
-        osm_center_px_y_ = pre_search_center_y_;
-        user_map_interacted_ = true;
-        show_search_return_ = false;
-        has_selected_llh_ = false;
-        hide_search_results();
-        osm_bg_needs_redraw_ = true;
-        normalize_osm_center();
-        request_visible_tiles();
-        notify_nfz_viewport_changed();
-      };
-      actions.toggle_nfz = [this]() {
-        if (!dji_nfz_mgr_) return;
-        bool current_state = dji_nfz_mgr_->is_enabled();
-        dji_nfz_mgr_->set_enabled(!current_state);
-        if (!current_state) {
-          notify_nfz_viewport_changed();
-        }
-        osm_bg_needs_redraw_ = true;
-      };
-      actions.try_undo_last_segment = [this]() { try_undo_last_segment(); };
-      actions.confirm_preview_segment = [this]() { confirm_preview_segment(); };
-      actions.update_all = [this]() {
-        update(osm_panel_rect_);
-        update(right_bottom_region());
-      };
-      actions.update_rect = [this](const QRect &rect) { update(rect); };
-
-      if (map_osm_handle_press(event->pos(), event->button(), running_ui,
-                               is_jam_map_locked(), rects, &state, actions)) {
-        event->accept();
-        return;
-      }
-
-      if (handle_control_click(event->pos().x(), event->pos().y(), width(),
-                               height())) {
-        update(osm_panel_rect_);
-        update(right_bottom_region());
-      }
-    } else {
-      MapOsmPressRects rects;
-      rects.osm_panel_rect = osm_panel_rect_;
-      rects.osm_scale_bar_rect = osm_scale_bar_rect_;
-      MapOsmPressState state;
-      MapOsmPressActions actions;
-      actions.toggle_scale_ruler = [this]() {
-        scale_ruler_enabled_ = !scale_ruler_enabled_;
-        if (!scale_ruler_enabled_) {
-          scale_ruler_has_start_ = false;
-          scale_ruler_has_end_ = false;
-          scale_ruler_end_fixed_ = false;
-        }
-      };
-      actions.confirm_preview_segment = [this]() { confirm_preview_segment(); };
-      actions.update_rect = [this](const QRect &rect) { update(rect); };
-      if (map_osm_handle_press(event->pos(), event->button(), running_ui,
-                               is_jam_map_locked(), rects, &state, actions)) {
-        event->accept();
-        return;
-      }
-    }
-    QWidget::mousePressEvent(event);
-  }
-
-  void mouseDoubleClickEvent(QMouseEvent *event) override {
-    bool running_ui = false;
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      running_ui = g_ctrl.running_ui;
-    }
-    if (map_osm_handle_double_click(
-            event->pos(), event->button() == Qt::LeftButton, osm_panel_rect_,
-            is_jam_map_locked(), running_ui, &suppress_left_click_release_,
-            [this](const QPoint &pos) { set_preview_target(pos, PATH_MODE_PLAN); },
-            [this](const QRect &rect) { update(rect); })) {
-      event->accept();
-      return;
-    }
-    QWidget::mouseDoubleClickEvent(event);
-  }
-
-  void mouseMoveEvent(QMouseEvent *event) override {
-    const bool tutorial_hovered =
-        !tutorial_toggle_rect_.isNull() && tutorial_toggle_rect_.contains(event->pos());
-    if (tutorial_toggle_hovered_ != tutorial_hovered) {
-      tutorial_toggle_hovered_ = tutorial_hovered;
-      update(tutorial_toggle_rect_.adjusted(-12, -12, 12, 12));
-    }
-
-    // 檢測滑鼠是否懸停在展開面板上
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      
-      if (g_ctrl.running_ui) {
-        int win_width = width();
-        int win_height = height();
-        int panel_x = 0, panel_y = 0, panel_w = 0, panel_h = 0;
-        
-        // 計算左下面板區域（包括上下兩部分）
-        get_rb_lq_panel_rect_expanded(win_width, win_height, &panel_x, &panel_y,
-                                      &panel_w, &panel_h, false, 1.0);
-        QRect lb_panel_upper(panel_x, panel_y, panel_w, panel_h);
-        
-        get_rb_lq_panel_rect_expanded(win_width, win_height, &panel_x, &panel_y,
-                                      &panel_w, &panel_h, true, 1.0);
-        QRect lb_panel_lower(panel_x, panel_y, panel_w, panel_h);
-        
-        QRect lb_combined = lb_panel_upper.united(lb_panel_lower);
-        bool hover_lb = lb_combined.contains(event->pos());
-        
-        // 計算右下面板區域（包括上下兩部分）
-        get_rb_rq_panel_rect_expanded(win_width, win_height, &panel_x, &panel_y,
-                                      &panel_w, &panel_h, false, 1.0);
-        QRect rb_panel_upper(panel_x, panel_y, panel_w, panel_h);
-        
-        get_rb_rq_panel_rect_expanded(win_width, win_height, &panel_x, &panel_y,
-                                      &panel_w, &panel_h, true, 1.0);
-        QRect rb_panel_lower(panel_x, panel_y, panel_w, panel_h);
-        
-        QRect rb_combined = rb_panel_upper.united(rb_panel_lower);
-        bool hover_rb = rb_combined.contains(event->pos());
-        
-        // 檢查是否有變化，如果有則更新並請求重繪
-        bool hover_changed = (g_ctrl.hover_lb_panel != hover_lb) || (g_ctrl.hover_rb_panel != hover_rb);
-        g_ctrl.hover_lb_panel = hover_lb;
-        g_ctrl.hover_rb_panel = hover_rb;
-        
-        if (hover_changed) {
-          QRect bottom_right_rect(win_width / 2, win_height / 2,
-                                  win_width - win_width / 2,
-                                  win_height - win_height / 2);
-          update(bottom_right_rect);
-        }
-      }
-    }
-
-    if (active_control_slider_ >= 0 && (event->buttons() & Qt::LeftButton)) {
-      if (handle_control_slider_drag(active_control_slider_, event->pos().x(),
-                                     width(), height())) {
-        update(osm_panel_rect_);
-        update(right_bottom_region());
-      }
-      event->accept();
-      return;
-    }
-
-    if (scale_ruler_enabled_ && scale_ruler_has_start_ && !scale_ruler_end_fixed_ &&
-        osm_panel_rect_.contains(event->pos())) {
-      double lat = 0.0;
-      double lon = 0.0;
-      if (panel_point_to_llh(event->pos(), &lat, &lon)) {
-        scale_ruler_has_end_ = true;
-        scale_ruler_end_lat_deg_ = lat;
-        scale_ruler_end_lon_deg_ = lon;
-        update(osm_panel_rect_);
-      }
-    }
-
-    if (map_osm_handle_move(
-            event->pos(), event->buttons(), osm_panel_rect_,
-            is_jam_map_locked(), &dragging_osm_, &drag_moved_osm_,
-            &drag_last_pos_, &osm_center_px_x_, &osm_center_px_y_,
-          nullptr,
-            [this]() {
-              user_map_interacted_ = true;
-              normalize_osm_center();
-            },
-            [this]() { request_visible_tiles(); },
-            [this]() { notify_nfz_viewport_changed(); },
-            [this](const QRect &rect) { update(rect); })) {
-      event->accept();
-      return;
-    }
-    QWidget::mouseMoveEvent(event);
-  }
+  void mouseMoveEvent(QMouseEvent *event) override;
 
   void leaveEvent(QEvent *event) override {
     if (tutorial_toggle_hovered_) {
@@ -925,167 +541,13 @@ protected:
     QWidget::leaveEvent(event);
   }
 
-  void mouseReleaseEvent(QMouseEvent *event) override {
-    if (event->button() == Qt::LeftButton) {
-      active_control_slider_ = -1;
-      bool running_ui = false;
-      {
-        std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-        running_ui = g_ctrl.running_ui;
-      }
+  void mouseReleaseEvent(QMouseEvent *event) override;
 
-      if (scale_ruler_enabled_ && dragging_osm_ && !drag_moved_osm_ &&
-          osm_panel_rect_.contains(event->pos())) {
-        double lat = 0.0;
-        double lon = 0.0;
-        if (panel_point_to_llh(event->pos(), &lat, &lon)) {
-          if (!scale_ruler_has_start_ || scale_ruler_end_fixed_) {
-            scale_ruler_has_start_ = true;
-            scale_ruler_start_lat_deg_ = lat;
-            scale_ruler_start_lon_deg_ = lon;
-            scale_ruler_has_end_ = false;
-            scale_ruler_end_fixed_ = false;
-          } else {
-            scale_ruler_has_end_ = true;
-            scale_ruler_end_lat_deg_ = lat;
-            scale_ruler_end_lon_deg_ = lon;
-            scale_ruler_end_fixed_ = true;
-          }
-          dragging_osm_ = false;
-          update(osm_panel_rect_);
-          event->accept();
-          return;
-        }
-      }
+  void wheelEvent(QWheelEvent *event) override;
 
-      if (map_osm_handle_left_release(
-              event->pos(), osm_panel_rect_, is_jam_map_locked(), running_ui,
-              &suppress_left_click_release_, &dragging_osm_, &drag_moved_osm_,
-              [this](const QPoint &pos) { set_preview_target(pos, PATH_MODE_LINE); },
-              [this](const QPoint &pos) {
-                if (!(dji_nfz_mgr_ && dji_nfz_mgr_->is_enabled())) {
-                  return false;
-                }
-                double clk_lat = 0.0, clk_lon = 0.0;
-                if (!panel_point_to_llh(pos, &clk_lat, &clk_lon)) {
-                  return false;
-                }
-                double target_lat = 0.0;
-                double target_lon = 0.0;
-                if (!nfz_pick_target_llh(dji_nfz_mgr_->get_zones(), clk_lat,
-                                         clk_lon, &target_lat, &target_lon,
-                                         nfz_layer_visible_.data())) {
-                  return false;
-                }
-                set_selected_llh_direct(target_lat, target_lon);
-                notify_nfz_viewport_changed();
-                return true;
-              },
-              [this](const QPoint &pos) { set_selected_llh_from_point(pos); },
-              [this](const QRect &rect) { update(rect); })) {
-        event->accept();
-        return;
-      }
-      dragging_osm_ = false;
-    }
-    QWidget::mouseReleaseEvent(event);
-  }
+  void keyPressEvent(QKeyEvent *event) override;
 
-  void wheelEvent(QWheelEvent *event) override {
-    QPoint p0 = event->position().toPoint();
-
-    // Tutorial page navigation by mouse wheel.
-    if (tutorial_overlay_visible_) {
-      const int delta = event->angleDelta().y();
-      if (delta > 0) {
-        tutorial_step_ = std::max(0, tutorial_step_ - 1);
-      } else if (delta < 0) {
-        tutorial_step_ = std::min(tutorial_last_step(), tutorial_step_ + 1);
-      }
-      tutorial_text_page_ = 0;
-      tutorial_anim_step_anchor_ = -1;
-      tutorial_has_glow_ = false;
-      update();
-      event->accept();
-      return;
-    }
-
-    // Keep wheel scrolling inside search results from leaking into map zoom.
-    if (search_results_list_ && search_results_list_->isVisible() &&
-        search_results_list_->geometry().contains(p0)) {
-      QWidget::wheelEvent(event);
-      return;
-    }
-
-    map_wheel_delta_accum_ += event->angleDelta().y();
-    int wheel_steps = 0;
-    while (map_wheel_delta_accum_ >= 120) {
-      ++wheel_steps;
-      map_wheel_delta_accum_ -= 120;
-    }
-    while (map_wheel_delta_accum_ <= -120) {
-      --wheel_steps;
-      map_wheel_delta_accum_ += 120;
-    }
-    if (wheel_steps == 0) {
-      event->accept();
-      return;
-    }
-    int delta = wheel_steps * 120;
-    if (map_osm_handle_wheel(
-            p0, delta, osm_panel_rect_, is_jam_map_locked(), &osm_zoom_,
-            &osm_center_px_x_, &osm_center_px_y_,
-            [this]() {
-              user_map_interacted_ = true;
-              normalize_osm_center();
-            },
-            [this]() { request_visible_tiles(); },
-            [this]() { notify_nfz_viewport_changed(); },
-            [this](const QRect &rect) { update(rect); })) {
-      event->accept();
-      return;
-    }
-    QWidget::wheelEvent(event);
-  }
-
-  void keyPressEvent(QKeyEvent *event) override {
-    if (tutorial_overlay_visible_) {
-      if (event->key() == Qt::Key_Left) {
-        tutorial_step_ = std::max(0, tutorial_step_ - 1);
-        tutorial_text_page_ = 0;
-        tutorial_anim_step_anchor_ = -1;
-        tutorial_has_glow_ = false;
-        update();
-        event->accept();
-        return;
-      }
-      if (event->key() == Qt::Key_Right) {
-        tutorial_step_ = std::min(tutorial_last_step(), tutorial_step_ + 1);
-        tutorial_text_page_ = 0;
-        tutorial_anim_step_anchor_ = -1;
-        tutorial_has_glow_ = false;
-        update();
-        event->accept();
-        return;
-      }
-    }
-    QWidget::keyPressEvent(event);
-  }
-
-  void closeEvent(QCloseEvent *event) override {
-    commit_inline_edit(true);
-    {
-      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-      g_ctrl.running_ui = false;
-    }
-    // Always follow the same safe shutdown path regardless of close method.
-    g_runtime_abort = 1;
-    g_gui_stop_req.fetch_add(1);
-    g_gui_exit_req.fetch_add(1);
-    g_running.store(false);
-    event->accept();
-    QWidget::closeEvent(event);
-  }
+  void closeEvent(QCloseEvent *event) override;
 
   void begin_inline_edit(int field_id);
   void commit_inline_edit(bool apply);
@@ -1320,6 +782,13 @@ private:
     return g_ctrl.interference_selection == 1;
   }
 
+  bool is_map_center_locked() const {
+    if (is_jam_map_locked()) {
+      return true;
+    }
+    return crossbow_center_locked_;
+  }
+
   void notify_nfz_viewport_changed() {
     if (!dji_nfz_mgr_ || !dji_nfz_mgr_->is_enabled() ||
         osm_panel_rect_.width() == 0)
@@ -1376,7 +845,22 @@ private:
   double pre_search_center_y_ = 0.0;
   int pre_search_zoom_ = 12;
   QRect search_return_btn_rect_;
-  QRect osm_stop_btn_rect_; // <== 新增：用來記錄 OSM 上 STOP 按鈕的位置
+  QRect osm_stop_btn_rect_;
+  QRect osm_launch_btn_rect_;
+  QRect crossbow_stage_launch_btn_rect_;
+  struct CrossbowWhitelistHit {
+    QRect btn_rect;
+    QString device_id;
+    bool currently_whitelisted = false;
+  };
+  std::vector<CrossbowWhitelistHit> crossbow_whitelist_hit_rows_;
+  QRect crossbow_whitelist_clear_btn_rect_;
+  QRect crossbow_sort_btn_rect_;
+  QRect crossbow_page_prev_btn_rect_;
+  QRect crossbow_page_next_btn_rect_;
+  int crossbow_stage_sort_mode_ = 0; /* 0=distance, 1=threat, 2=latest */
+  int crossbow_stage_page_ = 0;
+  int crossbow_stage_total_pages_ = 1;
   QRect osm_runtime_rect_;
   QRect osm_scale_bar_rect_;
   std::vector<QRect> osm_status_badge_rects_;
@@ -1460,11 +944,129 @@ private:
     }
   }
   // =========================================================
+  // --- 新增：DJI 偵測管理器與 Crossbow 狀態機成員 ---
+  // =========================================================
+  DjiDetectManager *dji_detect_mgr_ = nullptr;
+
+  // Crossbow 自動干擾（spoofing/jamming）狀態機
+  bool crossbow_auto_jam_latched_ = false;
+  bool crossbow_spoof_zone_latched_ = false;
+  bool crossbow_landing_hint_alerted_ = false;
+  bool crossbow_spoof_following_ = false;
+  bool crossbow_spoof_following_alerted_ = false;
+  long long crossbow_start_ms_ = 0LL;
+  bool crossbow_direction_locked_ = false;
+  double crossbow_locked_bearing_deg_ = 0.0;
+  double crossbow_beam_bearing_deg_ = 0.0;
+  double crossbow_auto_jam_trigger_m_ = 100.0;
+  bool crossbow_cached_nfz_valid_ = false;
+  bool crossbow_has_mouse_ = false;
+  QPoint crossbow_mouse_pos_;
+  bool crossbow_auto_overview_done_ = false;
+  bool crossbow_far_fetch_done_ = false;
+  double crossbow_cached_nfz_bearing_deg_ = 0.0;
+  double crossbow_cached_nfz_lat_deg_ = 0.0;
+  double crossbow_cached_nfz_lon_deg_ = 0.0;
+  double crossbow_cached_nfz_dist_m_ = 0.0;
+  bool crossbow_center_locked_ = false;
+  double crossbow_center_lock_lat_deg_ = 0.0;
+  double crossbow_center_lock_lon_deg_ = 0.0;
+  std::chrono::steady_clock::time_point crossbow_oor_hold_until_tp_;
+  double crossbow_oor_hold_dist_m_ = 0.0;
+
+  // DJI 偵測 UI 緩衝狀態
+  bool dji_detect_ui_detected_ = false;
+  double dji_detect_ui_confidence_ = 0.0;
+  QString dji_detect_ui_model_;
+  QString dji_detect_ui_source_;
+  int dji_detect_ui_target_count_ = 0;
+  int last_interference_selection_ = -1;  // 用於偵測狀態模式切換
+
+  // --- 輔助函式 ---
+  bool is_crossbow_mode() const {
+    std::lock_guard<std::mutex> lk(g_ctrl_mtx);
+    return g_ctrl.interference_selection == 2;
+  }
+
+public:
+  // --- 公開橋接方法（提供 C API 轉接） ---
+  void set_dji_detect_status_public(int detected, double confidence) {
+    if (dji_detect_mgr_) {
+      dji_detect_mgr_->set_manual_override(true, detected != 0, confidence, "C API override");
+    }
+  }
+
+  void set_dji_whitelist_csv_public(const QString &csv) {
+    if (dji_detect_mgr_) {
+      dji_detect_mgr_->set_whitelist_csv(csv);
+    }
+  }
+
+  void auto_zoom_for_location_public(double lat_deg, double lon_deg) {
+    /* Auto-zoom for 50m ring visibility (same logic as Crossbow entry) */
+    const double cos_lat_az = std::max(0.15, std::cos(lat_deg * M_PI / 180.0));
+    const double az_target_mpp = 50.0 / 120.0;  /* 50m ring occupies ~120px */
+    const double az_zoom_f = std::log2((40075016.0 * cos_lat_az) / (256.0 * az_target_mpp));
+    const int az_zoom = std::max(15, std::min(20, (int)std::llround(az_zoom_f)));
+    if (osm_zoom_ < az_zoom) {
+      osm_zoom_ = az_zoom;
+      osm_center_px_x_ = osm_lon_to_world_x(lon_deg, osm_zoom_);
+      osm_center_px_y_ = osm_lat_to_world_y(lat_deg, osm_zoom_);
+      normalize_osm_center();
+      request_visible_tiles();
+    }
+  }
+
+  void* get_dji_detect_manager_public() {
+    return dji_detect_mgr_;
+  }
+  // =========================================================
+
+  // Crossbow 相關輔助方法（狀態機重設）
+  void reset_crossbow_direction_state() {
+    crossbow_has_mouse_ = false;
+    crossbow_mouse_pos_ = QPoint();
+    crossbow_auto_overview_done_ = false;
+    crossbow_direction_locked_ = false;
+    crossbow_locked_bearing_deg_ = 0.0;
+    crossbow_cached_nfz_valid_ = false;
+    crossbow_far_fetch_done_ = false;
+    crossbow_oor_hold_dist_m_ = 0.0;
+    crossbow_oor_hold_until_tp_ = std::chrono::steady_clock::time_point{};
+  }
+
+  void sync_crossbow_ctrl_flags(bool direction_confirmed, bool distance_ok) {
+    std::lock_guard<std::mutex> lk(g_ctrl_mtx);
+    g_ctrl.crossbow_direction_confirmed = direction_confirmed;
+    g_ctrl.crossbow_distance_ok = distance_ok;
+  }
+
+  void sync_receiver_marker_to_selected_llh() {
+    const double snapped_lon = wrap_lon_deg(selected_lon_deg_);
+    const auto now = std::chrono::steady_clock::now();
+
+    g_receiver_lat_deg = selected_lat_deg_;
+    g_receiver_lon_deg = snapped_lon;
+    g_receiver_valid = 1;
+
+    receiver_anim_valid_ = true;
+    receiver_anim_lat_deg_ = selected_lat_deg_;
+    receiver_anim_lon_deg_ = snapped_lon;
+    receiver_anim_target_lat_deg_ = selected_lat_deg_;
+    receiver_anim_target_lon_deg_ = snapped_lon;
+    receiver_anim_last_tp_ = now;
+    next_receiver_draw_tick_ = now;
+  }
+
+  friend class MapWidgetInitMethods;
 };
 
-#include "gui/core/map_widget_ui_methods.inl"
-#include "gui/tutorial/map_widget_tutorial_methods.inl"
-#include "gui/control/map_widget_control_methods.inl"
+#include "gui/core/widget/map_widget_ui_methods.inl"
+#include "gui/tutorial/widget/map_widget_tutorial_methods.inl"
+#include "gui/control/widget/map_widget_control_methods.inl"
+
+#include "main_gui_render_event_methods.inl"
+#include "main_gui_input_event_methods.inl"
 
 #include "main_gui_path_methods.inl"
 

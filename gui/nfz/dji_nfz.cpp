@@ -1,5 +1,5 @@
 #include "dji_nfz.h"
-#include "gui/nfz/nfz_hit_test_utils.h"
+#include "gui/nfz/dji_nfz_utils.h"
 #include <QNetworkAccessManager>
 #include <QNetworkReply>
 #include <QNetworkRequest>
@@ -9,220 +9,8 @@
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QDebug>
-#include <QColor>
-#include <algorithm>
 #include <cmath>
-#include <QPainterPath>  // <== 加入這一行
 
-namespace {
-
-int nfz_draw_weight(const DjiNfzZone& zone) {
-    // 與 legend/checkbox 同步：白(服務)在下，藍(授權)次之，黃(警示)再上，紅(核心禁飛)最上。
-    const int layer = nfz_zone_layer_index(zone);
-    switch (layer) {
-        case 3: return 0; // Service (white)
-        case 2: return 1; // Authorization (blue)
-        case 1: return 2; // Warning (yellow)
-        case 0: return 3; // Restricted (red)
-        default: return 0;
-    }
-}
-
-void nfz_layer_colors(int layer, QColor* stroke, QColor* fill) {
-    if (!stroke || !fill) return;
-    switch (layer) {
-        case 0: // Restricted/Core (red)
-            *stroke = QColor(220, 38, 38, 235);
-            *fill = QColor(220, 38, 38, 88);
-            return;
-        case 1: // Warning/Alt-limit (yellow)
-            *stroke = QColor(217, 119, 6, 230);
-            *fill = QColor(245, 158, 11, 75);
-            return;
-        case 2: // Authorization (blue)
-            *stroke = QColor(37, 99, 235, 230);
-            *fill = QColor(59, 130, 246, 60);
-            return;
-        default: // Service/other (white outline)
-            *stroke = QColor(241, 245, 249, 230);
-            *fill = QColor(241, 245, 249, 30);
-            return;
-    }
-}
-
-double ring_area_abs(const std::vector<DjiLonLat>& pts) {
-    if (pts.size() < 3) return 0.0;
-    double s = 0.0;
-    for (size_t i = 0, j = pts.size() - 1; i < pts.size(); j = i++) {
-        s += (pts[j].lon * pts[i].lat) - (pts[i].lon * pts[j].lat);
-    }
-    return std::abs(s) * 0.5;
-}
-
-double zone_area_score(const DjiNfzZone& z) {
-    if (z.type == DjiNfzType::CIRCLE) {
-        return M_PI * z.radius_m * z.radius_m;
-    }
-    if (!z.rings.empty()) {
-        return ring_area_abs(z.rings[0].points);
-    }
-    return 0.0;
-}
-
-bool is_coordinate_pair(const QJsonArray& arr) {
-    return arr.size() >= 2 && arr.at(0).isDouble() && arr.at(1).isDouble();
-}
-
-bool parse_ring_points(const QJsonValue& ring_val, DjiPolygonRing* out_ring) {
-    if (!out_ring || !ring_val.isArray()) return false;
-    const QJsonArray ring_arr = ring_val.toArray();
-    for (int i = 0; i < ring_arr.size(); ++i) {
-        const QJsonValue pt_val = ring_arr.at(i);
-        if (pt_val.isObject()) {
-            const QJsonObject pt_obj = pt_val.toObject();
-            if (pt_obj.contains("lng") && pt_obj.contains("lat")) {
-                out_ring->points.push_back({pt_obj.value("lng").toDouble(),
-                                            pt_obj.value("lat").toDouble()});
-            }
-            continue;
-        }
-        if (pt_val.isArray()) {
-            const QJsonArray pt_arr = pt_val.toArray();
-            if (is_coordinate_pair(pt_arr)) {
-                out_ring->points.push_back({pt_arr.at(0).toDouble(),
-                                            pt_arr.at(1).toDouble()});
-            }
-        }
-    }
-    return out_ring->points.size() >= 3;
-}
-
-void append_polygon_from_value(const QJsonValue& poly_val, std::vector<DjiPolygonRing>* out_rings) {
-    if (!out_rings || !poly_val.isArray()) return;
-    const QJsonArray poly_arr = poly_val.toArray();
-    if (poly_arr.isEmpty()) return;
-
-    // 支援兩種格式：
-    // 1) [ [lng, lat], ... ] (單一外環)
-    // 2) [ [ [lng, lat], ... ], [ [lng, lat], ... ] ] (外環 + 內環)
-    const QJsonValue first = poly_arr.at(0);
-    if (first.isArray() && !is_coordinate_pair(first.toArray())) {
-        for (int i = 0; i < poly_arr.size(); ++i) {
-            DjiPolygonRing ring;
-            ring.is_outer = (i == 0);
-            if (parse_ring_points(poly_arr.at(i), &ring)) {
-                out_rings->push_back(std::move(ring));
-            }
-        }
-        return;
-    }
-
-    DjiPolygonRing outer;
-    outer.is_outer = true;
-    if (parse_ring_points(poly_val, &outer)) {
-        out_rings->push_back(std::move(outer));
-    }
-}
-
-void parse_zone_geometry(const QJsonObject& src,
-                         const QString& zone_name,
-                         int fallback_level,
-                         std::vector<DjiNfzZone>* out_zones) {
-    if (!out_zones) return;
-
-    DjiNfzZone nfz;
-    nfz.name = zone_name;
-    nfz.level = src.value("level").toInt(fallback_level);
-    nfz.color_hex = src.value("color").toString();
-
-    const QJsonValue poly_val = src.value("polygon_points");
-    if (poly_val.isArray() && !poly_val.toArray().isEmpty()) {
-        nfz.type = DjiNfzType::POLYGON;
-        append_polygon_from_value(poly_val, &nfz.rings);
-
-        QJsonValue inner_val = src.value("inner_rings");
-        if (!inner_val.isArray()) inner_val = src.value("holes");
-        if (!inner_val.isArray()) inner_val = src.value("inner_polygons");
-        if (inner_val.isArray()) {
-            const QJsonArray inner_arr = inner_val.toArray();
-            for (int i = 0; i < inner_arr.size(); ++i) {
-                DjiPolygonRing inner_ring;
-                inner_ring.is_outer = false;
-                if (parse_ring_points(inner_arr.at(i), &inner_ring)) {
-                    nfz.rings.push_back(std::move(inner_ring));
-                }
-            }
-        }
-
-        if (!nfz.rings.empty()) {
-            out_zones->push_back(std::move(nfz));
-            return;
-        }
-    }
-
-    const double radius = src.value("radius").toDouble();
-    if (radius > 0.0) {
-        nfz.type = DjiNfzType::CIRCLE;
-        nfz.center_lat = src.value("lat").toDouble();
-        nfz.center_lon = src.value("lng").toDouble();
-        nfz.radius_m = radius;
-        out_zones->push_back(std::move(nfz));
-    }
-}
-
-void add_ring_to_path(QPainterPath& path,
-                      const DjiPolygonRing& ring,
-                      std::function<bool(double, double, QPoint*)> coord_to_screen_fn,
-                      bool smooth_edges) {
-    if (ring.points.size() < 3) return;
-
-    std::vector<QPointF> screen_pts;
-    screen_pts.reserve(ring.points.size());
-    for (const auto& pt : ring.points) {
-        QPoint scr;
-        if (coord_to_screen_fn(pt.lat, pt.lon, &scr)) {
-            screen_pts.push_back(QPointF(scr));
-        }
-    }
-    if (screen_pts.size() < 3) return;
-
-    // 常見 GeoJSON 會在最後重複第一點做閉合；平滑前先移除避免形狀扭曲。
-    if (screen_pts.size() >= 4) {
-        const QPointF& first = screen_pts.front();
-        const QPointF& last = screen_pts.back();
-        if (std::abs(first.x() - last.x()) < 0.5 && std::abs(first.y() - last.y()) < 0.5) {
-            screen_pts.pop_back();
-        }
-    }
-    if (screen_pts.size() < 3) return;
-
-    // 平滑策略：使用 midpoint + quadTo，視覺上更接近遙控器上的糖果/球場邊緣。
-    // 低頂點數（如矩形/梯形）不平滑，保持幾何原貌。
-    if (smooth_edges && screen_pts.size() >= 7) {
-        const int n = (int)screen_pts.size();
-        QPointF p0 = screen_pts[0];
-        QPointF p1 = screen_pts[1];
-        QPointF start_mid((p0.x() + p1.x()) * 0.5, (p0.y() + p1.y()) * 0.5);
-        path.moveTo(start_mid);
-
-        for (int i = 0; i < n; ++i) {
-            const QPointF& ctrl = screen_pts[i];
-            const QPointF& next = screen_pts[(i + 1) % n];
-            QPointF mid((ctrl.x() + next.x()) * 0.5, (ctrl.y() + next.y()) * 0.5);
-            path.quadTo(ctrl, mid);
-        }
-        path.closeSubpath();
-        return;
-    }
-
-    path.moveTo(screen_pts[0]);
-    for (size_t i = 1; i < screen_pts.size(); ++i) {
-        path.lineTo(screen_pts[i]);
-    }
-    path.closeSubpath();
-}
-
-} // namespace
 DjiNfzManager::DjiNfzManager(QObject* parent, std::function<void()> on_update)
     : on_update_cb_(on_update) 
 {
@@ -257,7 +45,7 @@ void DjiNfzManager::trigger_fetch(double left_lon, double right_lon, double top_
     cur_bottom_ = bottom_lat;
     cur_zoom_ = zoom;
     
-    timer_->start(200); // 延遲 0.5 秒發送，減少無謂請求
+    timer_->start(80); // 80 ms debounce — fast enough to feel immediate while still batching rapid zoom steps
 }
 
 void DjiNfzManager::execute_fetch() {
@@ -271,12 +59,21 @@ void DjiNfzManager::execute_fetch() {
     
     double half_h = std::abs(cur_top_ - cur_bottom_) / 2.0;
     double half_w = std::abs(cur_right_ - cur_left_) / 2.0;
-    
-    // 強制限制：無論縮放到多小(Zoom 5)，向伺服器請求的長寬半徑最大不超過 5.0 度
-    // ======== 把 3.0 改成 5.0 ========
-    if (half_h > 5.0) half_h = 5.0; 
-    if (half_w > 5.0) half_w = 5.0;
-    // ======== ======================= ========
+
+    // Low zoom requires a much larger query window; otherwise NFZ appears to
+    // disappear when zooming out because only a tiny center area is fetched.
+    double max_half_span_deg = 6.0;
+    if (cur_zoom_ <= 4) {
+        max_half_span_deg = 85.0;
+    } else if (cur_zoom_ <= 6) {
+        max_half_span_deg = 45.0;
+    } else if (cur_zoom_ <= 8) {
+        max_half_span_deg = 22.0;
+    } else if (cur_zoom_ <= 10) {
+        max_half_span_deg = 12.0;
+    }
+    if (half_h > max_half_span_deg) half_h = max_half_span_deg;
+    if (half_w > max_half_span_deg) half_w = max_half_span_deg;
 
     double req_top = center_lat + half_h;
     double req_bottom = center_lat - half_h;
@@ -330,11 +127,11 @@ void DjiNfzManager::on_reply(QNetworkReply* reply) {
                         // 若有 sub_areas，優先使用子區塊幾何，避免父層大圓與子層跑道膠囊重疊。
                         for (int j = 0; j < sub_areas.size(); ++j) {
                             if (!sub_areas.at(j).isObject()) continue;
-                            parse_zone_geometry(sub_areas.at(j).toObject(), area_name,
-                                                area_level, &parsed_zones);
+                            dji_nfz_parse_zone_geometry(sub_areas.at(j).toObject(), area_name,
+                                                        area_level, &parsed_zones);
                         }
                     } else {
-                        parse_zone_geometry(area, area_name, area_level, &parsed_zones);
+                        dji_nfz_parse_zone_geometry(area, area_name, area_level, &parsed_zones);
                     }
                 }
 
@@ -346,56 +143,4 @@ void DjiNfzManager::on_reply(QNetworkReply* reply) {
         }
     }
     reply->deleteLater();
-}
-
-void dji_nfz_draw(QPainter& p, const QRect& panel, const std::vector<DjiNfzZone>& zones, int zoom,
-                  std::function<bool(double, double, QPoint*)> coord_to_screen_fn) 
-{
-    (void)panel; // 消除 unused parameter 警告
-    std::vector<DjiNfzZone> sorted_zones = zones;
-    std::sort(sorted_zones.begin(), sorted_zones.end(), [](const DjiNfzZone& a, const DjiNfzZone& b) {
-        const int wa = nfz_draw_weight(a);
-        const int wb = nfz_draw_weight(b);
-        if (wa != wb) return wa < wb;
-        // 同層級時，先畫較大區塊，讓小核心區塊疊在上方。
-        return zone_area_score(a) > zone_area_score(b);
-    });
-
-    // 放大倍率夠大時啟用平滑邊緣，避免低 zoom 過度扭曲。
-    const bool smooth_edges = (zoom >= 10);
-    for (const auto &nfz : sorted_zones) {
-        QColor stroke;
-        QColor fill;
-        nfz_layer_colors(nfz_zone_layer_index(nfz), &stroke, &fill);
-        p.setPen(QPen(stroke, 2, Qt::SolidLine));
-        p.setBrush(QBrush(fill));
-
-        if (nfz.type == DjiNfzType::POLYGON) {
-            // 支援複雜多邊形（含內環/洞）
-            // 使用 OddEvenFill 規則讓內環顯示為洞
-            QPainterPath path;
-            path.setFillRule(Qt::OddEvenFill);  // 關鍵：用此規則處理洞
-            
-            for (const auto &ring : nfz.rings) {
-                add_ring_to_path(path, ring, coord_to_screen_fn, smooth_edges);
-            }
-            
-            if (!path.isEmpty()) {
-                p.drawPath(path); 
-            }
-        } else if (nfz.type == DjiNfzType::CIRCLE) {
-            QPoint center_pt;
-            if (coord_to_screen_fn(nfz.center_lat, nfz.center_lon, &center_pt)) {
-                // 將地球公尺轉換為像素
-                double m_per_px = 156543.03392 * std::cos(nfz.center_lat * M_PI / 180.0) / std::pow(2, zoom);
-                int r_px = (int)std::round(nfz.radius_m / m_per_px);
-                
-                // 就算縮到超小，保底也要畫 3 個像素
-                if (r_px < 3) r_px = 3;
-
-                // 使用傳統圓形渲染
-                p.drawEllipse(center_pt, r_px, r_px);
-            }
-        }
-    }
 }

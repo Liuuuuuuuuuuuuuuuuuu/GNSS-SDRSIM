@@ -10,7 +10,7 @@ else
   ROOT_DIR="$SCRIPT_DIR"
 fi
 BIN_DIR="bin"
-REBUILD_SCRIPT="rebuild-local.sh"
+REBUILD_SCRIPT="scripts/build/rebuild-local.sh"
 FAT_BIN="$ROOT_DIR/$BIN_DIR/bds-sim-fat"
 
 RUNTIME_LIB_DIRS=""

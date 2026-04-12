@@ -25,17 +25,18 @@ QT_LIBS := $(shell pkg-config --libs $(QT_MODULES) 2>/dev/null)
 endif
 
 GUI_SRC_DIRS := $(shell find gui -type d)
+INCLUDE_DIRS := $(shell find include -type d 2>/dev/null)
 GUI_CPP_SRCS := $(shell find gui -type f -name '*.cpp')
-COMMON_SRCS = main.c globals.c bch.c navbits.c channel.c rinex.c orbits.c coord.c path.c iono.c \
-			 usrp_wrapper.cpp main_gui.cpp cuda/cuda_runtime_info.c $(GUI_CPP_SRCS)
+COMMON_SRCS = main.c src/core/globals.c src/core/bch.c src/nav/navbits.c src/core/channel.c src/nav/rinex.c src/nav/orbits.c src/geo/coord.c src/geo/path.c src/nav/iono.c src/runtime/gnss_rx.c \
+			 src/runtime/usrp_wrapper.cpp src/runtime/rid_rx.cpp src/runtime/wifi_rid_rx.c main_gui.cpp cuda/cuda_runtime_info.c $(GUI_CPP_SRCS)
 COMMON_OBJS = $(addprefix $(OBJ_DIR)/,$(COMMON_SRCS))
 COMMON_OBJS := $(COMMON_OBJS:.c=.o)
 COMMON_OBJS := $(COMMON_OBJS:.cpp=.o)
 DEPS := $(COMMON_OBJS:.o=.d)
 
-CFLAGS = -I. $(addprefix -I,$(GUI_SRC_DIRS)) -O3 -march=native -ffast-math -Wall -Wextra -fopenmp -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -fPIC -MMD -MP
+CFLAGS = -I. $(addprefix -I,$(INCLUDE_DIRS)) $(addprefix -I,$(GUI_SRC_DIRS)) -O3 -march=native -ffast-math -Wall -Wextra -fopenmp -D_FILE_OFFSET_BITS=64 -D_GNU_SOURCE -fPIC -ffunction-sections -fdata-sections -MMD -MP
 CXXFLAGS = $(CFLAGS) -std=c++14 $(QT_CFLAGS)
-NVCCFLAGS_BASE = -O3 --use_fast_math -Xptxas -O3 -Xcompiler "-O3 -fopenmp -fPIC" -I.
+NVCCFLAGS_BASE = -O3 --use_fast_math -Xptxas -O3 -Xcompiler "-O3 -fopenmp -fPIC" -I. $(addprefix -I,$(INCLUDE_DIRS))
 
 CUDA_PATH ?= $(patsubst %/bin/nvcc,%,$(NVCC))
 CUDA_LIB_CANDIDATES := \
@@ -47,7 +48,7 @@ CUDA_LIB_DIR ?= $(firstword $(foreach d,$(CUDA_LIB_CANDIDATES),$(if $(wildcard $
 ifeq ($(strip $(CUDA_LIB_DIR)),)
 CUDA_LIB_DIR := /usr/lib/x86_64-linux-gnu
 endif
-LIBS = -L$(CUDA_LIB_DIR) -Wl,-rpath,$(CUDA_LIB_DIR) -lm -luhd -lboost_system -lcudart -pthread $(QT_LIBS)
+LIBS = -L$(CUDA_LIB_DIR) -Wl,-rpath,$(CUDA_LIB_DIR) -Wl,--gc-sections -lm -luhd -lboost_system -lcudart -pthread $(QT_LIBS)
 
 include cuda/cuda_targets.mk
 
@@ -61,11 +62,12 @@ GENCODE_FAT = $(strip $(GENCODE_ALL) $(PTX_FALLBACK))
 CUDA_MULTI_OBJ = $(CUDA_OBJ_DIR)/bdssim_multi.o
 FAT_BIN = $(BIN_DIR)/bds-sim-fat
 LAUNCHER_TEMPLATE = bds-sim-launcher.sh
-REBUILD_SCRIPT = rebuild-local.sh
-SUPPORT_CHECK_SCRIPT = check-gpu-series-support.sh
+REBUILD_SCRIPT = scripts/build/rebuild-local.sh
+SUPPORT_CHECK_SCRIPT = scripts/build/check-gpu-series-support.sh
 
 .PHONY: all release all-gpu-binaries check-gpu-series-support print-gencode-fat clean \
 	cuda-smoke cuda-doctor cuda-heal
+	run-wifi-auto
 
 SUPPORTED_GPU_BIN_NAMES =
 ifneq ($(HAS_SM_61),)
@@ -217,5 +219,8 @@ $(BIN_DIR)/bds-sim-modern: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
 	rm -f bds-sim bds-sim-fat bds-sim-pascal bds-sim-turing bds-sim-ampere bds-sim-ada bds-sim-blackwell bds-sim-modern
+
+run-wifi-auto: bds-sim
+	@bash scripts/wifi/run_bds_sim_wifi_auto.sh
 
 -include $(DEPS)

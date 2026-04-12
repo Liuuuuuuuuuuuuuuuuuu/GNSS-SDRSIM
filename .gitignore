@@ -11,7 +11,7 @@ files
 *:Zone.Identifier
 
 # Build
-artifacts
+build/
 dist/
 *.a
 *.so

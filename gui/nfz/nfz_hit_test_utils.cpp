@@ -97,6 +97,30 @@ bool nfz_zone_center(const DjiNfzZone &nfz, double *lat, double *lon) {
   return false;
 }
 
+double wrap_deg_180(double deg) {
+  while (deg > 180.0)
+    deg -= 360.0;
+  while (deg < -180.0)
+    deg += 360.0;
+  return deg;
+}
+
+double bearing_deg_approx(double lat0_deg, double lon0_deg,
+                          double lat1_deg, double lon1_deg) {
+  const double lat0 = lat0_deg * M_PI / 180.0;
+  const double lat1 = lat1_deg * M_PI / 180.0;
+  const double dlon = (lon1_deg - lon0_deg) * M_PI / 180.0;
+  const double y = std::sin(dlon) * std::cos(lat1);
+  const double x = std::cos(lat0) * std::sin(lat1) -
+                   std::sin(lat0) * std::cos(lat1) * std::cos(dlon);
+  double brg = std::atan2(y, x) * 180.0 / M_PI;
+  while (brg < 0.0)
+    brg += 360.0;
+  while (brg >= 360.0)
+    brg -= 360.0;
+  return brg;
+}
+
 } // namespace
 
 int nfz_zone_layer_index(const DjiNfzZone &zone) {
@@ -221,4 +245,76 @@ bool nfz_find_nearest_zone_center(const std::vector<DjiNfzZone> &zones,
   if (target_lon)
     *target_lon = best_lon;
   return found;
+}
+
+bool nfz_find_reverse_zone_center_in_range(const std::vector<DjiNfzZone> &zones,
+                                           double ref_lat, double ref_lon,
+                                           double forward_bearing_deg,
+                                           double min_dist_m,
+                                           double max_dist_m,
+                                           double *target_lat,
+                                           double *target_lon,
+                                           double *out_dist_m,
+                                           double *out_nearest_reverse_dist_m) {
+  const double backward_deg = std::fmod(forward_bearing_deg + 180.0, 360.0);
+  const double rear_cone_half_deg = 3.0;
+
+  bool found_in_range = false;
+  double best_dist = std::numeric_limits<double>::max();
+  double best_delta = std::numeric_limits<double>::max();
+  double best_lat = ref_lat;
+  double best_lon = ref_lon;
+
+  bool has_reverse = false;
+  double nearest_reverse_dist = std::numeric_limits<double>::max();
+
+  for (const auto &nfz : zones) {
+    double zone_lat = 0.0;
+    double zone_lon = 0.0;
+    if (!nfz_zone_center(nfz, &zone_lat, &zone_lon))
+      continue;
+
+    const double dist = distance_m_approx(ref_lat, ref_lon, zone_lat, zone_lon);
+    const double zone_bearing = bearing_deg_approx(ref_lat, ref_lon, zone_lat, zone_lon);
+    const double delta_back = std::abs(wrap_deg_180(zone_bearing - backward_deg));
+
+    // Narrow reverse-direction gate: keep candidates within +/-3 deg.
+    if (delta_back > rear_cone_half_deg)
+      continue;
+
+    has_reverse = true;
+    if (dist < nearest_reverse_dist)
+      nearest_reverse_dist = dist;
+
+    if (dist < min_dist_m || dist > max_dist_m)
+      continue;
+
+    // Priority 1: nearest distance in the reverse hemisphere.
+    // Priority 2: better bearing match when distance ties.
+    if (!found_in_range ||
+        dist < best_dist - 1e-9 ||
+        (std::abs(dist - best_dist) <= 1e-9 && delta_back < best_delta)) {
+      found_in_range = true;
+      best_dist = dist;
+      best_delta = delta_back;
+      best_lat = zone_lat;
+      best_lon = zone_lon;
+    }
+  }
+
+  if (out_nearest_reverse_dist_m) {
+    *out_nearest_reverse_dist_m =
+        has_reverse ? nearest_reverse_dist : -1.0;
+  }
+
+  if (!found_in_range)
+    return false;
+
+  if (target_lat)
+    *target_lat = best_lat;
+  if (target_lon)
+    *target_lon = best_lon;
+  if (out_dist_m)
+    *out_dist_m = best_dist;
+  return true;
 }

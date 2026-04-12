@@ -32,6 +32,9 @@
 #include "usrp_wrapper.h"
 #include "main_gui.h"
 #include "cuda/cuda_runtime_info.h"
+#include "gnss_rx.h"
+#include "rid_rx.h"
+#include "wifi_rid_rx.h"
 
 typedef struct {
     bool start;
@@ -72,9 +75,13 @@ static volatile int g_runtime_path_queue_count = 0;
 static queued_path_t g_path_queue[MAX_PATH_QUEUE] = {0};
 static int g_path_q_count = 0;
 static pthread_mutex_t g_path_q_mtx = PTHREAD_MUTEX_INITIALIZER;
-static int g_spoof_autocenter_done = 0;
 static int g_stdin_immediate_mode = 0;
 static struct termios g_stdin_saved_termios;
+
+static inline bool interference_is_spoof_like(int interference_selection)
+{
+    return (interference_selection == 0 || interference_selection == 2);
+}
 
 static void print_pending_path_queue(void);
 int enqueue_path_file_name(const char *path);
@@ -821,7 +828,7 @@ static void set_cfg_defaults(sim_config_t *cfg)
     cfg->signal_gps = false;
     cfg->signal_mode = SIG_MODE_BDS;
     cfg->interference_mode = false;
-    cfg->interference_selection = -1;
+    cfg->interference_selection = 0;
     cfg->fs = mode_min_fs_hz(cfg->signal_mode);
     cfg->iono_on = true;
     cfg->tx_gain = 50.0;
@@ -1248,9 +1255,15 @@ static void stop_and_reset_runtime_state(sim_config_t *cfg,
     if (cfg) refresh_preview_prn_mask(NULL, false, cfg->llh, 0.0);
 
     if (usrp_ready && *usrp_ready) {
+        rid_rx_stop();        /* 先停 RX stream，再釋放 USRP 裝置 */
         usrp_close();
         *usrp_ready = false;
         if (usrp_scheduled) *usrp_scheduled = false;
+    }
+
+    /* 重新以 RX-only 模式開啟裝置，讓 Remote ID 在待機時繼續偵測 */
+    if (usrp_open_dev_only() == 0) {
+        rid_rx_start(0.0625, 30.0);
     }
 
     if (prompt_shown) *prompt_shown = false;
@@ -1304,6 +1317,7 @@ int main(int argc, char *argv[])
     bool gui_started = false;
     bool usrp_ready = false;
     bool usrp_scheduled = false;
+    bool crossbow_wait_launch = false;
     bool simulator_ready = false;
     bool print_ch_next_static = false;
     double usrp_rate_in_use = 0.0;
@@ -1380,6 +1394,16 @@ int main(int argc, char *argv[])
         gui_started = true;
         map_gui_set_run_state(0);
         map_gui_set_llh_ready(0);
+        gnss_rx_start();
+
+            /* ── 立即以 RX-only 模式開啟 USRP，啟動 Remote ID 接收器 ──
+             *    不等使用者按 START，無人機 ID 偵測從程式啟動就開始。     */
+            if (usrp_open_dev_only() == 0) {
+                void *dji_mgr_early = map_gui_get_dji_detect_manager();
+                if (dji_mgr_early) rid_rx_set_dji_detect_manager(dji_mgr_early);
+                rid_rx_start(0.0625, 30.0);
+            }
+            wifi_rid_start_from_env();
     }
 
     char line[1024];
@@ -1411,6 +1435,7 @@ int main(int argc, char *argv[])
         }
 
         bool gui_start = map_gui_consume_start_request() != 0;
+        bool gui_launch = map_gui_consume_launch_request() != 0;
         bool gui_stop = map_gui_consume_stop_request() != 0;
         bool gui_exit = map_gui_consume_exit_request() != 0;
         double picked_lat = 0.0, picked_lon = 0.0, picked_h = 0.0;
@@ -1423,6 +1448,29 @@ int main(int argc, char *argv[])
             cfg.llh[2] = picked_h;
             llh_set = true;
             printf("[cfg] 地圖起點已更新 LLH: %.6f,%.6f,%.2f\n", cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+        }
+
+        /* 輪詢 GNSS-SDR 背景定位結果 */
+        if (!running) {
+            double rx_lat = 0.0, rx_lon = 0.0, rx_h = 0.0;
+            if (gnss_rx_consume_fix(&rx_lat, &rx_lon, &rx_h)) {
+                cfg.llh[0] = rx_lat;
+                cfg.llh[1] = rx_lon;
+                cfg.llh[2] = rx_h;
+                llh_set = true;
+                g_receiver_lat_deg = rx_lat;
+                g_receiver_lon_deg = rx_lon;
+                g_receiver_valid   = 1;
+                wifi_rid_set_observer_pos(rx_lat, rx_lon);
+                map_gui_set_location_auto_zoom(rx_lat, rx_lon, rx_h);
+                char rx_msg[128];
+                snprintf(rx_msg, sizeof(rx_msg),
+                         "[GPS] \u81ea\u52d5\u5b9a\u4f4d: %.6f\u00b0, %.6f\u00b0, %.1f m",
+                         rx_lat, rx_lon, rx_h);
+                map_gui_push_alert(0, rx_msg);
+                printf("[gnss_rx] 自動設定起始座標: %.6f, %.6f, %.1f m\n",
+                       rx_lat, rx_lon, rx_h);
+            }
         }
 
         if (line[0] != '\0') {
@@ -1447,10 +1495,21 @@ int main(int argc, char *argv[])
 
         if (gui_start) cmd.start = true;
         if (gui_stop) cmd.stop = true;
-        if (gui_exit) cmd.quit = true;
+        if (gui_exit) {
+            // Immediate hard-exit path requested: do not process USRP/simulator
+            // shutdown tail once EXIT is pressed in GUI.
+            gnss_rx_cancel();
+            rid_rx_stop();
+            wifi_rid_stop();
+            _exit(0);
+        }
 
         if (cmd.quit) {
-            break;
+            // CLI quit should follow the same immediate-exit behavior.
+            gnss_rx_cancel();
+            rid_rx_stop();
+            wifi_rid_stop();
+            _exit(0);
         }
 
         if (!running) {
@@ -1470,40 +1529,40 @@ int main(int argc, char *argv[])
             }
             map_gui_set_rinex_names(cfg.rinex_file_bds, cfg.rinex_file_gps);
 
-            const bool spoof_selected = (preview_cfg.interference_selection == 0);
+            const bool spoof_selected = interference_is_spoof_like(preview_cfg.interference_selection);
             const bool jam_selected = (preview_cfg.interference_selection == 1);
             const bool llh_required = spoof_selected;
-
-            if (spoof_selected && !llh_set && !g_spoof_autocenter_done) {
-                double auto_lat = 0.0, auto_lon = 0.0, auto_h = 0.0;
-                if (map_gui_get_default_spoof_llh(&auto_lat, &auto_lon, &auto_h)) {
-                    cfg.llh[0] = auto_lat;
-                    cfg.llh[1] = auto_lon;
-                    cfg.llh[2] = auto_h;
-                    llh_set = true;
-                    map_gui_set_selected_llh(auto_lat, auto_lon, auto_h);
-                    fprintf(stderr,
-                            "[cfg] SPOOF 預設定位至最近禁航區中心: %.6f,%.6f,%.2f\n",
-                            auto_lat, auto_lon, auto_h);
-                    g_spoof_autocenter_done = 1;
-                }
-            }
 
             map_gui_set_llh_ready((llh_set || !llh_required || jam_selected) ? 1 : 0);
             if (llh_set) {
                 g_receiver_lat_deg = cfg.llh[0];
                 g_receiver_lon_deg = cfg.llh[1];
                 g_receiver_valid = 1;
+                wifi_rid_set_observer_pos(cfg.llh[0], cfg.llh[1]);
             } else {
                 g_receiver_valid = 0;
             }
 
+            /* Crossbow 模式需要自動設定座標 (但 SPOOF 模式不要) */
+            if (!llh_set && llh_required && preview_cfg.interference_selection == 2) {
+                cfg.llh[0] = 22.758423;
+                cfg.llh[1] = 120.337893;
+                cfg.llh[2] = 0.0;
+                llh_set = true;
+                g_receiver_lat_deg = cfg.llh[0];
+                g_receiver_lon_deg = cfg.llh[1];
+                g_receiver_valid = 1;
+                wifi_rid_set_observer_pos(cfg.llh[0], cfg.llh[1]);
+                map_gui_set_location_auto_zoom(cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+                fprintf(stderr, "[crossbow] 自動設定位置: 22.758423°, 120.337893° (Crossbow 預設)\n");
+                map_gui_push_alert(0, "[Crossbow] 已設定位置: 22.758423°, 120.337893°");
+            }
             if (!llh_set && llh_required) {
                 map_gui_set_single_prn_candidates(NULL, 0);
                 refresh_preview_prn_mask(NULL, false, cfg.llh, 0.0);
                 if (cmd.start) {
-                    fprintf(stderr, "[error] SPOOF 模式需要定位，且無法自動取得預設 NFZ 中心\n");
-                    gui_report_alert(2, "SPOOF mode requires a location, and no NFZ center could be determined.");
+                    fprintf(stderr, "[error] SPOOF/CROSSBOW 模式需要定位，且無法自動取得預設 NFZ 中心\n");
+                    gui_report_alert(2, "SPOOF/CROSSBOW mode requires a location, and no NFZ center could be determined.");
                     map_gui_set_run_state(0);
                 }
                 usleep(20000);
@@ -1526,18 +1585,30 @@ int main(int argc, char *argv[])
                 preview_refresh_sec = now_sec;
             }
 
-            if (!cmd.start) {
+            if (cmd.stop) {
+                crossbow_wait_launch = false;
+                map_gui_set_tx_active(0);
+                if (line[0] != '\0') {
+                    puts("[run] 已取消待發射狀態");
+                }
+                usleep(20000);
+                continue;
+            }
+
+            const bool launch_requested = (crossbow_wait_launch && gui_launch);
+
+            if (!cmd.start && !launch_requested) {
                 if (line[0] != '\0') {
                     printf("[cfg] 目前起始 LLH: %.6f,%.6f,%.2f\n", cfg.llh[0], cfg.llh[1], cfg.llh[2]);
-                    puts("[cfg] 其餘參數請在 GUI 左下控制面板設定，按 START 開始。");
+                    puts("[cfg] 其餘參數請在 GUI 左下控制面板設定，按 START 進入偵測待命。");
                 }
                 usleep(20000);
                 continue;
             }
 
             if (preview_cfg.interference_selection < 0) {
-                fprintf(stderr, "[error] 請先選擇 INTERFERE 的模式 (SPOOF 或 JAM)\n");
-                gui_report_alert(2, "Please choose INTERFERE mode first: SPOOF or JAM.");
+                fprintf(stderr, "[error] 請先選擇 INTERFERE 的模式 (SPOOF / CROSSBOW 或 JAM)\n");
+                gui_report_alert(2, "Please choose INTERFERE mode first: SPOOF / CROSSBOW or JAM.");
                 map_gui_set_run_state(0);
                 continue;
             }
@@ -1549,6 +1620,57 @@ int main(int argc, char *argv[])
             cfg.signal_gps = (cfg.signal_mode == SIG_MODE_GPS);
             cfg.fs = clamp_fs_to_mode_grid(cfg.fs, cfg.signal_mode);
             apply_mode_if_offsets(cfg.signal_mode);
+
+            if (launch_requested && cfg.interference_selection != 2) {
+                crossbow_wait_launch = false;
+                map_gui_push_alert(1, "Crossbow launch canceled: mode changed.");
+                usleep(20000);
+                continue;
+            }
+
+            if (cfg.interference_selection == 2 && cmd.start && !launch_requested) {
+                if (g_receiver_valid) {
+                    cfg.llh[0] = g_receiver_lat_deg;
+                    cfg.llh[1] = g_receiver_lon_deg;
+                    llh_set = true;
+                }
+                if (!llh_set) {
+                    fprintf(stderr, "[error] CROSSBOW 模式需要先取得設備定位\n");
+                    gui_report_alert(2,
+                                     "CROSSBOW mode requires a resolved device location before START.");
+                    map_gui_set_run_state(0);
+                    continue;
+                }
+
+                map_gui_set_selected_llh_centered(cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+                map_gui_set_run_state(1);
+                map_gui_set_tx_active(0);
+                crossbow_wait_launch = true;
+                printf("[crossbow] START 進入待命偵測: %.6f, %.6f, %.2f\n",
+                       cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+                map_gui_push_alert(0, "Crossbow armed. Press LAUNCH to transmit.");
+                usleep(20000);
+                continue;
+            }
+
+            if (cfg.interference_selection == 2) {
+                if (g_receiver_valid) {
+                    cfg.llh[0] = g_receiver_lat_deg;
+                    cfg.llh[1] = g_receiver_lon_deg;
+                    llh_set = true;
+                }
+                if (!llh_set) {
+                    fprintf(stderr, "[error] CROSSBOW 模式需要先取得設備定位\n");
+                    gui_report_alert(2,
+                                     "CROSSBOW mode requires a resolved device location before START.");
+                    map_gui_set_run_state(0);
+                    continue;
+                }
+
+                map_gui_set_selected_llh_centered(cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+                printf("[crossbow] START 鎖定中心點: %.6f, %.6f, %.2f\n",
+                       cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+            }
 
             if (!cfg.interference_mode) {
                 {
@@ -1592,11 +1714,15 @@ int main(int argc, char *argv[])
                                fabs(usrp_freq_in_use - tx_freq) > 1.0 ||
                                usrp_external_clk_in_use != cfg.usrp_external_clk ||
                                usrp_byte_in_use != cfg.byte_output)) {
+                rid_rx_stop();   /* 先停 RX stream 再重開 TX */
                 usrp_close();
                 usrp_ready = false;
                 usrp_scheduled = false;
             }
             if (!usrp_ready) {
+                /* 確保 B210 已脫離 RX 模式後才 TX 初始化 */
+                rid_rx_stop();   /* 防止首次啟動時 RX-only 流仍在跑 */
+                gnss_rx_cancel();
                 if (usrp_init(tx_freq, tx_rate, cfg.tx_gain,
                               cfg.usrp_external_clk ? 1 : 0,
                               cfg.byte_output ? USRP_SAMPLE_FMT_BYTE : USRP_SAMPLE_FMT_SHORT) != 0) {
@@ -1609,6 +1735,13 @@ int main(int argc, char *argv[])
                     usrp_gain_in_use = cfg.tx_gain;
                     usrp_external_clk_in_use = cfg.usrp_external_clk;
                     usrp_byte_in_use = cfg.byte_output;
+                    /* TX 初始化完成後，啟動 Remote ID 接收器 (共享同一 usrp_dev) */
+                    /* 先連接 DjiDetectManager 指針，再啟動 RID 接收器 */
+                    void *dji_mgr = map_gui_get_dji_detect_manager();
+                    if (dji_mgr) {
+                        rid_rx_set_dji_detect_manager(dji_mgr);
+                    }
+                    rid_rx_start(0.0625, cfg.tx_gain > 50.0 ? 30.0 : cfg.tx_gain);
                 }
             }
 
@@ -1698,6 +1831,7 @@ int main(int argc, char *argv[])
             hold_llh[1] = cfg.llh[1];
             hold_llh[2] = cfg.llh[2];
             print_ch_next_static = true;
+            crossbow_wait_launch = false;
 
               running = true;
                  g_runtime_running = 1;
@@ -1715,6 +1849,7 @@ int main(int argc, char *argv[])
                                          &print_ch_next_static,
                                          &usrp_ready, &usrp_scheduled,
                                          hold_llh);
+            crossbow_wait_launch = false;
             puts("[run] 已停止並清空所有路徑與座標，請重新在地圖點選起點");
             continue;
         }
@@ -1781,6 +1916,7 @@ int main(int argc, char *argv[])
                                         &print_ch_next_static,
                                         &usrp_ready, &usrp_scheduled,
                                         hold_llh);
+                      crossbow_wait_launch = false;
                  puts("[run] 已中斷目前路徑並清空所有路徑與座標，請重新在地圖點選起點");
                  continue;
               }
@@ -1821,6 +1957,7 @@ int main(int argc, char *argv[])
                                          &print_ch_next_static,
                                          &usrp_ready, &usrp_scheduled,
                                          hold_llh);
+            crossbow_wait_launch = false;
             puts("[run] 已中斷並清空所有路徑與座標，請重新在地圖點選起點");
             continue;
         }
@@ -1832,6 +1969,9 @@ int main(int argc, char *argv[])
     pthread_join(input_tid, NULL);
     disable_immediate_stdin_mode();
 
+    gnss_rx_cancel();
+    rid_rx_stop();
+    wifi_rid_stop();
     if (gui_started) stop_map_gui();
     if (usrp_ready) usrp_close();
     if (simulator_ready) cleanup_simulator();

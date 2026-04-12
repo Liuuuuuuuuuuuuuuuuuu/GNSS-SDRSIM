@@ -1,0 +1,600 @@
+#include "gui/layout/panels/map_monitor_panels_utils.h"
+
+#include "gui/layout/panels/monitor_panel_utils.h"
+#include "gui/layout/geometry/quad_panel_layout.h"
+#include "gui/core/i18n/gui_i18n.h"
+#include "gui/core/i18n/gui_font_manager.h"
+#include "gui/core/runtime/rf_mode_utils.h"
+
+#include <QFontMetrics>
+#include <QLinearGradient>
+#include <QPainterPath>
+#include <QPen>
+#include <QDateTime>
+
+#include <algorithm>
+#include <chrono>
+#include <cmath>
+#include <cstdio>
+#include <cstring>
+
+extern "C" {
+#include "bdssim.h"
+}
+
+namespace {
+
+void draw_panel_frame(QPainter &p, const QRect &panel) {
+  QLinearGradient panel_grad(panel.topLeft(), panel.bottomLeft());
+  panel_grad.setColorAt(0.0, QColor("#101f33"));
+  panel_grad.setColorAt(1.0, QColor("#081423"));
+  p.setRenderHint(QPainter::Antialiasing, true);
+  p.setPen(Qt::NoPen);
+  p.setBrush(panel_grad);
+  p.drawRoundedRect(panel.adjusted(0, 0, -1, -1), 8, 8);
+  p.setRenderHint(QPainter::Antialiasing, false);
+  p.setPen(QPen(QColor("#c4d2e4"), 1));
+  p.setBrush(Qt::NoBrush);
+  p.drawRoundedRect(panel.adjusted(0, 0, -1, -1), 8, 8);
+}
+
+QRect draw_panel_base(QPainter &p, int panel_x, int panel_y, int panel_w,
+                      int panel_h, int x_div, int y_div,
+                      bool draw_grid = true) {
+  QRect panel(panel_x, panel_y, panel_w, panel_h);
+  draw_panel_frame(p, panel);
+  QRect draw_rect = monitor_plot_rect(panel_x, panel_y, panel_w, panel_h);
+  if (draw_grid && draw_rect.width() >= 8 && draw_rect.height() >= 8) {
+    draw_monitor_inner_grid(p, draw_rect, QColor("#c4d2e4"), QColor(196, 210, 228, 56),
+                            x_div, y_div);
+  }
+  return draw_rect;
+}
+
+void draw_panel_title(QPainter &p, int panel_x, int panel_y, int panel_h,
+                      const QString &title) {
+  QFont old_font = p.font();
+  QFont title_font = old_font;
+  title_font.setPointSize(std::max(12, std::min(18, panel_h / 18)));
+  p.setFont(title_font);
+  p.setPen(QColor("#8fc7ff"));
+  p.drawText(panel_x + 10, panel_y + 24, title);
+  p.setFont(old_font);
+}
+
+void draw_frequency_x_labels(QPainter &p, const QRect &draw_rect,
+                             const MapMonitorPanelsInput &in) {
+  const double cf_mhz = mode_tx_center_hz(in.ctrl.signal_mode) / 1e6;
+  const double fs_mhz = (in.ctrl.fs_mhz > 0.0)
+                            ? in.ctrl.fs_mhz
+                            : (mode_default_fs_hz(in.ctrl.signal_mode) / 1e6);
+  const double half_bw_mhz = fs_mhz * 0.5;
+  char lbl_l[24], lbl_c[24], lbl_r[24];
+  std::snprintf(lbl_l, sizeof(lbl_l), "%.3f MHz", cf_mhz - half_bw_mhz);
+  std::snprintf(lbl_c, sizeof(lbl_c), "%.3f MHz", cf_mhz);
+  std::snprintf(lbl_r, sizeof(lbl_r), "%.3f MHz", cf_mhz + half_bw_mhz);
+  draw_monitor_x_labels(p, draw_rect, draw_rect.bottom() + 8, lbl_l, lbl_c, lbl_r);
+}
+
+void draw_spectrum_trace(QPainter &p, const QRect &draw_rect,
+                         const SpectrumSnapshot &snap) {
+  if (!snap.valid || snap.bins < 8)
+    return;
+
+  p.setPen(QPen(QColor("#51a7ff"), 1));
+  QPainterPath path;
+  for (int i = 0; i < snap.bins; ++i) {
+    float t = (float)i / (float)(snap.bins - 1);
+    int x = draw_rect.left() + (int)llround(t * (float)(draw_rect.width() - 1));
+    float norm = (snap.rel_db[i] + 30.0f) / 30.0f;
+    norm = std::max(0.0f, std::min(1.0f, norm));
+    int y =
+        draw_rect.bottom() - (int)llround(norm * (float)(draw_rect.height() - 1));
+    if (i == 0)
+      path.moveTo(x, y);
+    else
+      path.lineTo(x, y);
+  }
+  p.setBrush(Qt::NoBrush);
+  p.save();
+  p.setClipRect(draw_rect);
+  p.drawPath(path);
+  p.setPen(QPen(QColor(81, 167, 255, 96), 3));
+  p.drawPath(path);
+  p.restore();
+}
+
+void draw_time_iq_trace(QPainter &p, const QRect &draw_rect,
+                        const SpectrumSnapshot &snap, bool clamp_samples) {
+  if (!snap.time_valid || snap.time_samples < 8 || draw_rect.width() <= 2 ||
+      draw_rect.height() <= 2)
+    return;
+
+  const float y_scale = (float)(draw_rect.height() - 1) * 0.5f;
+  const float y_mid = (float)draw_rect.center().y();
+  QPainterPath path_q;
+  QPainterPath path_i;
+  for (int i = 0; i < snap.time_samples; ++i) {
+    float t = (float)i / (float)(snap.time_samples - 1);
+    int x = draw_rect.left() + (int)llround(t * (float)(draw_rect.width() - 1));
+    float qq = snap.time_q[i];
+    float ii = snap.time_i[i];
+    if (clamp_samples) {
+      qq = std::max(-1.0f, std::min(1.0f, qq));
+      ii = std::max(-1.0f, std::min(1.0f, ii));
+    }
+    int yq = (int)llround(y_mid - qq * y_scale);
+    int yi = (int)llround(y_mid - ii * y_scale);
+    if (i == 0) {
+      path_q.moveTo(x, yq);
+      path_i.moveTo(x, yi);
+    } else {
+      path_q.lineTo(x, yq);
+      path_i.lineTo(x, yi);
+    }
+  }
+  p.setPen(QPen(QColor("#51a7ff"), 1));
+  p.setBrush(Qt::NoBrush);
+  p.save();
+  p.setClipRect(draw_rect);
+  p.drawPath(path_q);
+  p.setPen(QPen(QColor("#ef4444"), 1));
+  p.drawPath(path_i);
+  p.setPen(QPen(QColor(81, 167, 255, 92), 2));
+  p.drawPath(path_q);
+  p.setPen(QPen(QColor(239, 68, 68, 92), 2));
+  p.drawPath(path_i);
+  p.restore();
+}
+
+void draw_constellation_points(QPainter &p, const QRect &draw_rect,
+                               const SpectrumSnapshot &snap) {
+  if (!snap.time_valid || snap.time_samples < 8)
+    return;
+
+  const int cx = draw_rect.center().x();
+  const int cy = draw_rect.center().y();
+  p.setPen(Qt::NoPen);
+  p.setBrush(QColor("#51a7ff"));
+  int step = snap.time_samples / 256;
+  if (step < 1)
+    step = 1;
+  for (int i = 0; i < snap.time_samples; i += step) {
+    float ii = std::max(-1.0f, std::min(1.0f, snap.time_i[i]));
+    float qq = std::max(-1.0f, std::min(1.0f, snap.time_q[i]));
+    int px = cx + (int)llround(ii * (float)(draw_rect.width() / 2 - 2));
+    int py = cy - (int)llround(qq * (float)(draw_rect.height() / 2 - 2));
+    p.drawEllipse(QPoint(px, py), 2, 2);
+  }
+}
+
+} // namespace
+
+void map_draw_spectrum_panel(QPainter &p, int win_width, int win_height,
+                             const MapMonitorPanelsInput &in) {
+  int panel_x = 0, panel_y = 0, panel_w = 0, panel_h = 0;
+  p.setFont(gui_font_ui(in.language));
+  get_rb_lq_panel_rect(win_width, win_height, &panel_x, &panel_y, &panel_w,
+                       &panel_h, false);
+  if (panel_w < 180 || panel_h < 120)
+    return;
+
+  QRect draw_rect = draw_panel_base(p, panel_x, panel_y, panel_w, panel_h, 6, 4);
+  if (draw_rect.width() < 8 || draw_rect.height() < 8)
+    return;
+
+  draw_spectrum_trace(p, draw_rect, in.spec_snap);
+
+  draw_panel_title(p, panel_x, panel_y, panel_h,
+                   gui_i18n_text(in.language, "monitor.spectrum"));
+
+  const int db_max = 0;
+  const int db_mid = -15;
+  const int db_min = -30;
+  char db_top[24], db_mid_s[24], db_bot[24];
+  std::snprintf(db_top, sizeof(db_top), "%d dB", db_max);
+  std::snprintf(db_mid_s, sizeof(db_mid_s), "%d dB", db_mid);
+  std::snprintf(db_bot, sizeof(db_bot), "%d dB", db_min);
+  p.setPen(QColor("#c4d2e4"));
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top()), Qt::AlignRight | Qt::AlignVCenter, db_top);
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top() + draw_rect.height() / 2), Qt::AlignRight | Qt::AlignVCenter, db_mid_s);
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.bottom()), Qt::AlignRight | Qt::AlignVCenter, db_bot);
+
+  draw_frequency_x_labels(p, draw_rect, in);
+}
+
+void map_draw_waterfall_panel(QPainter &p, int win_width, int win_height,
+                              const MapMonitorPanelsInput &in) {
+  int panel_x = 0, panel_y = 0, panel_w = 0, panel_h = 0;
+    p.setFont(gui_font_ui(in.language));
+  get_rb_lq_panel_rect(win_width, win_height, &panel_x, &panel_y, &panel_w,
+                       &panel_h, true);
+  if (panel_w < 180 || panel_h < 120)
+    return;
+
+  QRect draw_rect = draw_panel_base(p, panel_x, panel_y, panel_w, panel_h, 6, 4,
+                                    false);
+  if (draw_rect.width() < 8 || draw_rect.height() < 8)
+    return;
+
+  QLinearGradient plot_grad(draw_rect.topLeft(), draw_rect.bottomLeft());
+  plot_grad.setColorAt(0.0, QColor("#101f33"));
+  plot_grad.setColorAt(1.0, QColor("#081423"));
+  p.fillRect(draw_rect, plot_grad);
+  if (!in.waterfall_image.isNull()) {
+    p.drawImage(draw_rect, in.waterfall_image);
+  }
+  draw_monitor_inner_grid(p, draw_rect, QColor("#c4d2e4"), QColor(196, 210, 228, 56), 6, 4);
+  draw_panel_title(p, panel_x, panel_y, panel_h,
+                   gui_i18n_text(in.language, "monitor.waterfall"));
+
+  p.setPen(QColor("#c4d2e4"));
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top()), Qt::AlignRight | Qt::AlignVCenter, "0s");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.center().y()), Qt::AlignRight | Qt::AlignVCenter, "5s");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.bottom()), Qt::AlignRight | Qt::AlignVCenter, "10s");
+
+  draw_frequency_x_labels(p, draw_rect, in);
+}
+
+void map_draw_time_panel(QPainter &p, int win_width, int win_height,
+                         const MapMonitorPanelsInput &in) {
+  int panel_x = 0, panel_y = 0, panel_w = 0, panel_h = 0;
+  p.setFont(gui_font_ui(in.language));
+  get_rb_rq_panel_rect(win_width, win_height, &panel_x, &panel_y, &panel_w,
+                       &panel_h, false);
+  if (panel_w < 180 || panel_h < 120)
+    return;
+
+  QRect draw_rect = draw_panel_base(p, panel_x, panel_y, panel_w, panel_h, 6, 4);
+  if (draw_rect.width() < 8 || draw_rect.height() < 8)
+    return;
+
+  draw_time_iq_trace(p, draw_rect, in.spec_snap, false);
+
+  draw_panel_title(p, panel_x, panel_y, panel_h,
+                   gui_i18n_text(in.language, "monitor.time"));
+  p.setPen(QColor("#c4d2e4"));
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top()), Qt::AlignRight | Qt::AlignVCenter, "+1.0");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top() + draw_rect.height() / 4), Qt::AlignRight | Qt::AlignVCenter, "+0.5");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.center().y()), Qt::AlignRight | Qt::AlignVCenter, "0.0");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top() + (draw_rect.height() * 3) / 4), Qt::AlignRight | Qt::AlignVCenter, "-0.5");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.bottom()), Qt::AlignRight | Qt::AlignVCenter, "-1.0");
+
+  const double fs_hz = (in.ctrl.fs_mhz > 0.0) ? (in.ctrl.fs_mhz * 1e6) : mode_default_fs_hz(in.ctrl.signal_mode);
+  const double time_span_ms = ((double)in.spec_snap.time_samples / fs_hz) * 1000.0;
+  char t_l[24], t_c[24], t_r[24];
+  std::snprintf(t_l, sizeof(t_l), "0.00ms");
+  std::snprintf(t_c, sizeof(t_c), "%.2fms", time_span_ms * 0.5);
+  std::snprintf(t_r, sizeof(t_r), "%.2fms", time_span_ms);
+  draw_monitor_x_labels(p, draw_rect, draw_rect.bottom() + 8, t_l, t_c, t_r);
+}
+
+void map_draw_constellation_panel(QPainter &p, int win_width, int win_height,
+                                   const MapMonitorPanelsInput &in) {
+  int panel_x = 0, panel_y = 0, panel_w = 0, panel_h = 0;
+  p.setFont(gui_font_ui(in.language));
+  get_rb_rq_panel_rect(win_width, win_height, &panel_x, &panel_y, &panel_w,
+                       &panel_h, true);
+  if (panel_w < 180 || panel_h < 120)
+    return;
+
+  QRect draw_rect = draw_panel_base(p, panel_x, panel_y, panel_w, panel_h, 4, 4);
+  if (draw_rect.width() < 16 || draw_rect.height() < 16)
+    return;
+
+  // In Crossbow mode with Detail tab, show radar instead of constellation
+  if (in.show_drone_center && in.ctrl.interference_selection == 2) {
+    // Draw radar for tactical targeting
+    draw_panel_title(p, panel_x, panel_y, panel_h, "Radar");
+    
+    const QRect radar = draw_rect.adjusted(0, 0, 0, -8);
+    const QPoint c = radar.center();
+    const int r = std::max(18, std::min(radar.width(), radar.height()) / 2 - 2);
+    p.setPen(QPen(QColor(64, 168, 94, 120), 1));
+    p.setBrush(Qt::NoBrush);
+    p.drawEllipse(c, r, r);
+    p.drawEllipse(c, (int)std::llround(r * 0.66), (int)std::llround(r * 0.66));
+    p.drawEllipse(c, (int)std::llround(r * 0.33), (int)std::llround(r * 0.33));
+    p.drawLine(c.x() - r, c.y(), c.x() + r, c.y());
+    p.drawLine(c.x(), c.y() - r, c.x(), c.y() + r);
+
+    // Physical rings for tactical thresholds
+    const double max_range_m = 100.0;
+    const double ring_marks[] = {10.0, 25.0, 50.0, 100.0};
+    for (double m : ring_marks) {
+      const double rr = (m / max_range_m) * r;
+      const int rp = (int)std::llround(std::max(3.0, rr));
+      p.setPen(QPen(QColor(46, 204, 113, m >= 100.0 ? 140 : 110), 1,
+                    m == 25.0 ? Qt::DashLine : Qt::SolidLine));
+      p.drawEllipse(c, rp, rp);
+    }
+
+    // Rotating sweep arm with soft trail
+    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+    const double sweep_rad = (double)(now_ms % 4000) / 4000.0 * 2.0 * M_PI;
+    for (int i = 0; i < 12; ++i) {
+      const double a = sweep_rad - (double)i * (M_PI / 32.0);
+      const int alpha = std::max(15, 130 - i * 10);
+      p.setPen(QPen(QColor(40, 255, 120, alpha), i == 0 ? 2.2 : 1.2));
+      const int ex = c.x() + (int)std::llround(std::cos(a) * r);
+      const int ey = c.y() + (int)std::llround(std::sin(a) * r);
+      p.drawLine(c, QPoint(ex, ey));
+    }
+
+    // Draw radar points
+    for (const auto &pt : in.radar_points) {
+      const double norm = std::max(0.0, std::min(1.0, pt.distance_m / max_range_m));
+      const double rr = std::max(6.0, (1.0 - norm) * r);
+      const double ang = (pt.bearing_deg - 90.0) * M_PI / 180.0;
+      const int x = c.x() + (int)std::llround(std::cos(ang) * rr);
+      const int y = c.y() + (int)std::llround(std::sin(ang) * rr);
+      p.setPen(Qt::NoPen);
+        const QColor point_color =
+          pt.hostile
+            ? QColor(255, 85, 85, 230)
+            : (pt.is_wifi_rid
+               ? QColor(132, 204, 22, 220)
+               : (pt.is_ble_rid ? QColor(56, 189, 248, 230)
+                        : QColor(99, 102, 241, 210)));
+        p.setBrush(point_color);
+      p.drawEllipse(QPoint(x, y), 4, 4);
+      
+      if (pt.has_speed && pt.speed_mps > 0.2) {
+        const double tail = std::min(16.0, 2.0 + pt.speed_mps * 1.2);
+        const int tx = x - (int)std::llround(std::cos(ang) * tail);
+        const int ty = y - (int)std::llround(std::sin(ang) * tail);
+        p.setPen(QPen(point_color.lighter(120), 1.1));
+        p.drawLine(QPoint(x, y), QPoint(tx, ty));
+      }
+    }
+
+    if (in.radar_points.empty()) {
+      p.setPen(QColor("#8ab4f8"));
+      p.drawText(radar, Qt::AlignCenter, "No target");
+    }
+  } else {
+    // Normal constellation panel
+    int cx = draw_rect.center().x();
+    int cy = draw_rect.center().y();
+    p.setPen(QPen(QColor("#c4d2e4"), 1));
+    p.drawLine(draw_rect.left(), cy, draw_rect.right(), cy);
+    p.drawLine(cx, draw_rect.top(), cx, draw_rect.bottom());
+
+    draw_constellation_points(p, draw_rect, in.spec_snap);
+
+    draw_panel_title(p, panel_x, panel_y, panel_h,
+                     gui_i18n_text(in.language, "monitor.constellation"));
+    p.setPen(QColor("#c4d2e4"));
+    draw_monitor_x_labels(p, draw_rect, draw_rect.bottom() + 8, "-1", "0", "+1");
+    p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "+1");
+    p.drawText(monitor_y_label_rect(draw_rect, draw_rect.center().y(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "0");
+    p.drawText(monitor_y_label_rect(draw_rect, draw_rect.bottom(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "-1");
+  }
+}
+
+void map_update_waterfall_image(int win_width, int win_height,
+                                const SpectrumSnapshot &snap, QImage *image,
+                                int *image_width, int *image_height) {
+  if (!image || !image_width || !image_height)
+    return;
+
+  int panel_x = 0, panel_y = 0, panel_w = 0, panel_h = 0;
+  get_rb_lq_panel_rect(win_width, win_height, &panel_x, &panel_y, &panel_w,
+                       &panel_h, true);
+  if (panel_w < 180 || panel_h < 120)
+    return;
+
+  QRect draw_rect = monitor_plot_rect(panel_x, panel_y, panel_w, panel_h);
+  int draw_w = draw_rect.width();
+  int draw_h = draw_rect.height();
+  if (draw_w < 8 || draw_h < 8)
+    return;
+
+  if (*image_width != draw_w || *image_height != draw_h || image->isNull()) {
+    *image = QImage(draw_w, draw_h, QImage::Format_RGB32);
+    image->fill(qRgb(8, 20, 35));
+    *image_width = draw_w;
+    *image_height = draw_h;
+  }
+
+  if (!snap.valid || snap.bins < 8)
+    return;
+
+  // Keep the waterfall time axis aligned to fixed labels: top=0s, mid=5s, bottom=10s.
+  // Advance rows based on real elapsed wall time to avoid speed drift when
+  // spectrum producer FPS differs from GUI_SPEC_FPS.
+  static int last_draw_w = 0;
+  static int last_draw_h = 0;
+  static double row_credit = 0.0;
+  static bool has_last_tp = false;
+  static std::chrono::steady_clock::time_point last_tp;
+  if (last_draw_w != draw_w || last_draw_h != draw_h) {
+    last_draw_w = draw_w;
+    last_draw_h = draw_h;
+    row_credit = 0.0;
+    has_last_tp = false;
+  }
+
+  const auto now_tp = std::chrono::steady_clock::now();
+  double dt_sec = 0.0;
+  if (has_last_tp) {
+    dt_sec = std::chrono::duration<double>(now_tp - last_tp).count();
+    if (dt_sec < 0.0)
+      dt_sec = 0.0;
+    if (dt_sec > 1.0)
+      dt_sec = 1.0;
+  }
+  last_tp = now_tp;
+  has_last_tp = true;
+
+  const double rows_per_update = ((double)draw_h / 10.0) * dt_sec;
+  row_credit += rows_per_update;
+  int shift_rows = (int)std::floor(row_credit);
+  if (shift_rows > draw_h - 1)
+    shift_rows = draw_h - 1;
+  if (shift_rows > 0) {
+    const size_t row_bytes = (size_t)draw_w * 4u;
+    std::memmove(image->scanLine(shift_rows), image->scanLine(0),
+                 (size_t)(draw_h - shift_rows) * row_bytes);
+    row_credit -= (double)shift_rows;
+  }
+
+  uint32_t *top_row = reinterpret_cast<uint32_t *>(image->scanLine(0));
+  for (int x = 0; x < draw_w; ++x) {
+    int bin = (int)((long long)x * snap.bins / draw_w);
+    if (bin < 0)
+      bin = 0;
+    if (bin >= snap.bins)
+      bin = snap.bins - 1;
+    uint8_t r = 0, g = 0, b = 0;
+    rel_db_to_rgb(snap.rel_db[bin], &r, &g, &b);
+    r = (uint8_t)std::max(10, (int)r);
+    g = (uint8_t)std::max(26, (int)g);
+    b = (uint8_t)std::max(54, (int)b);
+    top_row[x] = qRgb(r, g, b);
+  }
+
+  if (shift_rows > 1) {
+    const size_t row_bytes = (size_t)draw_w * 4u;
+    for (int y = 1; y < shift_rows; ++y) {
+      std::memcpy(image->scanLine(y), image->scanLine(0), row_bytes);
+    }
+  }
+}
+
+// ============================================================================
+// 展開版本的繪製函數（支持動態寬度調整）
+// ============================================================================
+
+void map_draw_spectrum_panel_expanded(QPainter &p, int win_width, int win_height,
+                                      const MapMonitorPanelsInput &in,
+                                      double expand_progress) {
+  int panel_x = 0, panel_y = 0, panel_w = 0, panel_h = 0;
+  get_rb_lq_panel_rect_expanded(win_width, win_height, &panel_x, &panel_y, &panel_w,
+                        &panel_h, false, expand_progress);
+  if (panel_w < 180 || panel_h < 120)
+    return;
+
+  QRect draw_rect = draw_panel_base(p, panel_x, panel_y, panel_w, panel_h, 6, 4);
+  if (draw_rect.width() < 8 || draw_rect.height() < 8)
+    return;
+
+  draw_spectrum_trace(p, draw_rect, in.spec_snap);
+
+  draw_panel_title(p, panel_x, panel_y, panel_h,
+                   gui_i18n_text(in.language, "monitor.spectrum"));
+
+  const int db_max = 0;
+  const int db_mid = -15;
+  const int db_min = -30;
+  char db_top[24], db_mid_s[24], db_bot[24];
+  std::snprintf(db_top, sizeof(db_top), "%d dB", db_max);
+  std::snprintf(db_mid_s, sizeof(db_mid_s), "%d dB", db_mid);
+  std::snprintf(db_bot, sizeof(db_bot), "%d dB", db_min);
+  p.setPen(QColor("#c4d2e4"));
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top()), Qt::AlignRight | Qt::AlignVCenter, db_top);
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top() + draw_rect.height() / 2), Qt::AlignRight | Qt::AlignVCenter, db_mid_s);
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.bottom()), Qt::AlignRight | Qt::AlignVCenter, db_bot);
+
+  draw_frequency_x_labels(p, draw_rect, in);
+}
+
+void map_draw_waterfall_panel_expanded(QPainter &p, int win_width, int win_height,
+                                       const MapMonitorPanelsInput &in,
+                                       double expand_progress) {
+  int panel_x = 0, panel_y = 0, panel_w = 0, panel_h = 0;
+  get_rb_lq_panel_rect_expanded(win_width, win_height, &panel_x, &panel_y, &panel_w,
+                        &panel_h, true, expand_progress);
+  if (panel_w < 180 || panel_h < 120)
+    return;
+
+  QRect draw_rect = draw_panel_base(p, panel_x, panel_y, panel_w, panel_h, 6, 4,
+                                    false);
+  if (draw_rect.width() < 8 || draw_rect.height() < 8)
+    return;
+
+  if (in.waterfall_image.width() <= 0 || in.waterfall_image.height() <= 0)
+    return;
+
+  QRect scaled_img_rect = draw_rect;
+  p.drawImage(scaled_img_rect, in.waterfall_image);
+
+  draw_panel_title(p, panel_x, panel_y, panel_h,
+                   gui_i18n_text(in.language, "monitor.waterfall"));
+  p.setPen(QColor("#c4d2e4"));
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "0s");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.center().y(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "5s");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.bottom(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "10s");
+
+  const double cf_mhz = mode_tx_center_hz(in.ctrl.signal_mode) / 1e6;
+  const double fs_mhz = (in.ctrl.fs_mhz > 0.0) ? in.ctrl.fs_mhz : (mode_default_fs_hz(in.ctrl.signal_mode) / 1e6);
+  const double half_bw_mhz = fs_mhz * 0.5;
+  char lbl_l[24], lbl_c[24], lbl_r[24];
+  std::snprintf(lbl_l, sizeof(lbl_l), "%.3f MHz", cf_mhz - half_bw_mhz);
+  std::snprintf(lbl_c, sizeof(lbl_c), "%.3f MHz", cf_mhz);
+  std::snprintf(lbl_r, sizeof(lbl_r), "%.3f MHz", cf_mhz + half_bw_mhz);
+  draw_monitor_x_labels(p, draw_rect, draw_rect.bottom() + 8, lbl_l, lbl_c, lbl_r);
+}
+
+void map_draw_time_panel_expanded(QPainter &p, int win_width, int win_height,
+                                  const MapMonitorPanelsInput &in,
+                                  double expand_progress) {
+  int panel_x = 0, panel_y = 0, panel_w = 0, panel_h = 0;
+  get_rb_rq_panel_rect_expanded(win_width, win_height, &panel_x, &panel_y, &panel_w,
+                        &panel_h, false, expand_progress);
+  if (panel_w < 180 || panel_h < 120)
+    return;
+
+  QRect draw_rect = draw_panel_base(p, panel_x, panel_y, panel_w, panel_h, 6, 4);
+  if (draw_rect.width() < 8 || draw_rect.height() < 8)
+    return;
+
+  draw_time_iq_trace(p, draw_rect, in.spec_snap, true);
+
+  draw_panel_title(p, panel_x, panel_y, panel_h,
+                   gui_i18n_text(in.language, "monitor.time"));
+  p.setPen(QColor("#c4d2e4"));
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top()), Qt::AlignRight | Qt::AlignVCenter, "+1.0");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top() + draw_rect.height() / 4), Qt::AlignRight | Qt::AlignVCenter, "+0.5");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.center().y()), Qt::AlignRight | Qt::AlignVCenter, "0.0");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top() + (draw_rect.height() * 3) / 4), Qt::AlignRight | Qt::AlignVCenter, "-0.5");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.bottom()), Qt::AlignRight | Qt::AlignVCenter, "-1.0");
+
+  const double fs_hz = (in.ctrl.fs_mhz > 0.0) ? (in.ctrl.fs_mhz * 1e6) : mode_default_fs_hz(in.ctrl.signal_mode);
+  const double time_span_ms = ((double)in.spec_snap.time_samples / fs_hz) * 1000.0;
+  char t_l[24], t_c[24], t_r[24];
+  std::snprintf(t_l, sizeof(t_l), "0.00ms");
+  std::snprintf(t_c, sizeof(t_c), "%.2fms", time_span_ms * 0.5);
+  std::snprintf(t_r, sizeof(t_r), "%.2fms", time_span_ms);
+  draw_monitor_x_labels(p, draw_rect, draw_rect.bottom() + 8, t_l, t_c, t_r);
+}
+
+void map_draw_constellation_panel_expanded(QPainter &p, int win_width, int win_height,
+                                            const MapMonitorPanelsInput &in,
+                                            double expand_progress) {
+  int panel_x = 0, panel_y = 0, panel_w = 0, panel_h = 0;
+  get_rb_rq_panel_rect_expanded(win_width, win_height, &panel_x, &panel_y, &panel_w,
+                        &panel_h, true, expand_progress);
+  if (panel_w < 180 || panel_h < 120)
+    return;
+
+  QRect draw_rect = draw_panel_base(p, panel_x, panel_y, panel_w, panel_h, 4, 4);
+  if (draw_rect.width() < 16 || draw_rect.height() < 16)
+    return;
+
+  int cx = draw_rect.center().x();
+  int cy = draw_rect.center().y();
+  p.setPen(QPen(QColor("#c4d2e4"), 1));
+  p.drawLine(draw_rect.left(), cy, draw_rect.right(), cy);
+  p.drawLine(cx, draw_rect.top(), cx, draw_rect.bottom());
+
+  draw_constellation_points(p, draw_rect, in.spec_snap);
+
+  draw_panel_title(p, panel_x, panel_y, panel_h,
+                   gui_i18n_text(in.language, "monitor.constellation"));
+  p.setPen(QColor("#c4d2e4"));
+  draw_monitor_x_labels(p, draw_rect, draw_rect.bottom() + 8, "-1", "0", "+1");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "+1");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.center().y(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "0");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.bottom(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "-1");
+}

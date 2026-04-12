@@ -69,6 +69,7 @@ private:
 
     double cur_left_ = 0, cur_right_ = 0, cur_top_ = 0, cur_bottom_ = 0;
     int cur_zoom_ = 0;
+    unsigned long long request_serial_ = 0;
 };
 
 // 繪製工具函式 (解耦：將經緯度轉換交由外部 lambda 處理)
