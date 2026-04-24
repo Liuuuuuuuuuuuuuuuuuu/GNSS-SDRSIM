@@ -11,6 +11,9 @@ int wifi_rid_start_from_env(void);
 /* Stop Wi-Fi RID bridge process if running. */
 void wifi_rid_stop(void);
 
+/* Fast stop for immediate app exit: sends SIGKILL without wait loops. */
+void wifi_rid_stop_fast(void);
+
 /* Returns 1 if bridge process is running, else 0. */
 int wifi_rid_is_active(void);
 

@@ -902,3 +902,12 @@ void gnss_rx_cancel(void)
 
     g_rx_thread_started = 0;
 }
+
+void gnss_rx_cancel_fast(void)
+{
+    g_rx_cancel = 1;
+    if (g_gnss_sdr_pid > 0) {
+        kill((pid_t)g_gnss_sdr_pid, SIGKILL);
+        g_gnss_sdr_pid = -1;
+    }
+}

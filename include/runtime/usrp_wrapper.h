@@ -27,11 +27,8 @@ size_t usrp_send(const int16_t *iq_data, size_t num_samples);
  */
 void usrp_close(void);
 
-
-/* 以 RX-only 模式開啟 USRP 裝置（不建立 TX stream），供 rid_rx 在發射前使用。
- * 若裝置已開啟則直接回傳 0。
- */
-int usrp_open_dev_only(void);
+/* Fast close path for immediate process exit. */
+void usrp_close_fast(void);
 
 /* Schedule USRP to start transmitting in given seconds from now (device time offset).
  * seconds_from_now may be negative (start immediately) or positive.

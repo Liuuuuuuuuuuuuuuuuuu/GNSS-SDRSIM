@@ -402,6 +402,8 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
   controls_in.running_ui = in.running_ui;
   controls_in.can_undo = in.can_undo;
   controls_in.dji_on = in.nfz_enabled;
+  controls_in.show_range_cap_legend =
+      in.running_ui && in.has_selected_llh && !in.jam_selected;
   controls_in.dark_map_mode = in.dark_map_mode;
   controls_in.tutorial_enabled = in.tutorial_enabled;
   controls_in.tutorial_hovered = in.tutorial_hovered;

@@ -20,6 +20,8 @@ double g_switch_option_text_scale = 1.0;
 double g_value_text_scale = 1.0;
 int g_uniform_text_pt = 0;
 int g_uniform_label_pt = 0;
+const ControlSliderPartOverrides *g_slider_part_overrides = nullptr;
+ControlLayoutElementId g_current_slider_element = CTRL_LAYOUT_ELEMENT_NONE;
 
 } // namespace
 
@@ -120,4 +122,53 @@ int control_paint_uniform_text_pt() {
 
 int control_paint_uniform_label_pt() {
   return g_uniform_label_pt;
+}
+
+void control_paint_set_slider_part_overrides(const ControlSliderPartOverrides *overrides) {
+  g_slider_part_overrides = overrides;
+}
+
+void control_paint_set_current_slider_element(ControlLayoutElementId id) {
+  g_current_slider_element = id;
+}
+
+static void apply_slider_part_adjustment(QRect *rect,
+                                         const ControlRectAdjustment *adj) {
+  if (!rect || !adj || rect->width() <= 0 || rect->height() <= 0) {
+    return;
+  }
+  rect->translate(adj->dx, adj->dy);
+  rect->setWidth(std::max(12, rect->width() + adj->dw));
+  rect->setHeight(std::max(10, rect->height() + adj->dh));
+}
+
+static const ControlRectAdjustment *slider_part_adj(
+    const ControlRectAdjustment parts[CTRL_LAYOUT_ELEMENT_COUNT]) {
+  if (!g_slider_part_overrides || !parts ||
+      g_current_slider_element <= CTRL_LAYOUT_ELEMENT_NONE ||
+      g_current_slider_element >= CTRL_LAYOUT_ELEMENT_COUNT) {
+    return nullptr;
+  }
+  return &parts[g_current_slider_element];
+}
+
+void control_paint_apply_slider_label_adjustment(QRect *rect) {
+  const ControlRectAdjustment *adj =
+      slider_part_adj(g_slider_part_overrides ? g_slider_part_overrides->label
+                                              : nullptr);
+  apply_slider_part_adjustment(rect, adj);
+}
+
+void control_paint_apply_slider_track_adjustment(QRect *rect) {
+  const ControlRectAdjustment *adj =
+      slider_part_adj(g_slider_part_overrides ? g_slider_part_overrides->track
+                                              : nullptr);
+  apply_slider_part_adjustment(rect, adj);
+}
+
+void control_paint_apply_slider_value_adjustment(QRect *rect) {
+  const ControlRectAdjustment *adj =
+      slider_part_adj(g_slider_part_overrides ? g_slider_part_overrides->value
+                                              : nullptr);
+  apply_slider_part_adjustment(rect, adj);
 }

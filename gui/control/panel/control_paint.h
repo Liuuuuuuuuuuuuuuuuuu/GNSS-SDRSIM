@@ -14,6 +14,11 @@ void control_paint_set_detail_scales(double master_scale,
                                      double value_scale);
 void control_paint_set_uniform_text_point_size(int point_size);
 void control_paint_set_uniform_label_point_size(int point_size);
+void control_paint_set_slider_part_overrides(const ControlSliderPartOverrides *overrides);
+void control_paint_set_current_slider_element(ControlLayoutElementId id);
+void control_paint_apply_slider_label_adjustment(QRect *rect);
+void control_paint_apply_slider_track_adjustment(QRect *rect);
+void control_paint_apply_slider_value_adjustment(QRect *rect);
 
 void control_draw_button(QPainter &p, const Rect &r, const QColor &border, const QColor &text, const char *label);
 void control_draw_button_filled(QPainter &p,

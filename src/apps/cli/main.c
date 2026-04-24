@@ -22,6 +22,7 @@
 #include <pthread.h>
 #include <stdarg.h>
 #include <termios.h>
+#include <signal.h>
 
 #include "bdssim.h"
 #include "timeconv.h"
@@ -35,6 +36,7 @@
 #include "gnss_rx.h"
 #include "rid_rx.h"
 #include "wifi_rid_rx.h"
+#include "ble_rid_rx.h"
 
 typedef struct {
     bool start;
@@ -69,6 +71,7 @@ static input_queue_t g_input_q = {
 };
 static volatile int g_input_stop = 0;
 static volatile int g_input_eof = 0;
+static volatile sig_atomic_t g_term_signal = 0;
 static volatile int g_runtime_running = 0;
 static volatile int g_runtime_path_busy = 0;
 static volatile int g_runtime_path_queue_count = 0;
@@ -95,6 +98,12 @@ static void tty_write_stdout(const void *buf, size_t n)
     (void)rc;
 }
 
+static void reset_tty_visual_state(void)
+{
+    static const char kResetSeq[] = "\033[0m\033[39m\033[49m\033[?25h\033[?12l";
+    tty_write_stdout(kResetSeq, sizeof(kResetSeq) - 1);
+}
+
 static int enable_immediate_stdin_mode(void)
 {
     if (!isatty(STDIN_FILENO)) return 0;
@@ -118,6 +127,66 @@ static void disable_immediate_stdin_mode(void)
     if (!g_stdin_immediate_mode) return;
     tcsetattr(STDIN_FILENO, TCSANOW, &g_stdin_saved_termios);
     g_stdin_immediate_mode = 0;
+}
+
+static void restore_tty_on_exit(void)
+{
+    disable_immediate_stdin_mode();
+    reset_tty_visual_state();
+}
+
+static void handle_termination_signal(int signo)
+{
+    g_term_signal = signo;
+    g_input_stop = 1;
+    g_input_eof = 1;
+    disable_immediate_stdin_mode();
+    reset_tty_visual_state();
+    tty_write_stdout("\n", 1);
+}
+
+static void install_signal_handlers(void)
+{
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_handler = handle_termination_signal;
+    sigemptyset(&sa.sa_mask);
+
+    sigaction(SIGINT, &sa, NULL);
+    sigaction(SIGTERM, &sa, NULL);
+    sigaction(SIGHUP, &sa, NULL);
+    sigaction(SIGQUIT, &sa, NULL);
+}
+
+static void fast_exit_now(int code, const char *reason)
+{
+    struct timespec t0;
+    clock_gettime(CLOCK_MONOTONIC, &t0);
+
+    g_input_stop = 1;
+    g_input_eof = 1;
+    disable_immediate_stdin_mode();
+    tty_write_stdout("\r\033[2K", 5);
+    reset_tty_visual_state();
+    tty_write_stdout("\n", 1);
+    if (reason && reason[0]) {
+        fprintf(stderr, "[exit] fast shutdown requested by %s\n", reason);
+    }
+
+    /* Best-effort teardown with strict 300ms budget. */
+    gnss_rx_cancel_fast();
+    wifi_rid_stop_fast();
+    ble_rid_stop_fast();
+    usrp_close_fast();
+
+    struct timespec t1;
+    clock_gettime(CLOCK_MONOTONIC, &t1);
+    long elapsed_ms = (long)((t1.tv_sec - t0.tv_sec) * 1000L +
+                             (t1.tv_nsec - t0.tv_nsec) / 1000000L);
+    if (elapsed_ms > 300L) {
+        fprintf(stderr, "[exit] fast path exceeded 300ms (%ld ms), forcing immediate exit\n", elapsed_ms);
+    }
+    _exit(code);
 }
 
 static const char *translate_hotkey_command(int ch)
@@ -453,21 +522,23 @@ static void *stdin_reader_thread(void *arg)
 
 static void usage(const char *p)
 {
+    printf("\n======================= BDS-SIM CLI =======================\n");
     printf("用法: %s\n", p);
-    puts("  --screen N          指定 GUI 顯示在由左到右排序的第 N 個螢幕 (例如 --screen 3)");
+    puts("  --screen N           指定 GUI 顯示在由左到右排序的第 N 個螢幕 (例如 --screen 3)");
+    puts("");
     puts("互動命令:");
-    puts("  左上地圖左鍵點選      設定起始固定座標 (lat,lon,h=0m)");
-    puts("  --llh lat,lon,h      (相容保留) 手動設定起始固定座標");
-    puts("  其餘參數            請在 GUI 控制面板設定");
-    puts("  --llh-file file      執行軌跡檔，完成後停在最後一點持續發射");
-    puts("  --file-delete        刪除佇列中最後一段待執行軌跡");
-    puts("  --start              (可選) 與 GUI START 同功能");
-    puts("  --stop               (可選) 與 GUI STOP 同功能，立即中斷並清空路徑/座標");
-    puts("  熱鍵 s               執行中立即 STOP（TTY 逐鍵模式）");
-    puts("  熱鍵 u               執行中立即刪除最後一段待執行路徑（TTY 逐鍵模式）");
-    puts("  --help               顯示說明");
-    puts("  --exit               離開程式\n");
-    puts("流程:");
+    puts("  左上地圖左鍵點選       設定起始固定座標 (lat,lon,h=0m)");
+    puts("  --llh lat,lon,h       (相容保留) 手動設定起始固定座標");
+    puts("  --llh-file file       執行軌跡檔，完成後停在最後一點持續發射");
+    puts("  --file-delete         刪除佇列中最後一段待執行軌跡");
+    puts("  --start               (可選) 與 GUI START 同功能");
+    puts("  --stop                (可選) 與 GUI STOP 同功能，立即中斷並清空路徑/座標");
+    puts("  --help                顯示說明");
+    puts("  --exit                立即退出程式");
+    puts("  熱鍵 s                執行中立即 STOP（TTY 逐鍵模式）");
+    puts("  熱鍵 u                執行中立即刪除最後一段待執行路徑（TTY 逐鍵模式）");
+    puts("");
+    puts("操作流程:");
     puts("  1) 在左上 OpenStreetMap 左鍵點一下選起點（可重複改）");
     puts("  2) 在 GUI 左下控制面板設定其他參數");
     puts("  3) 按 GUI 的 START 開始發射 (或輸入 --start)");
@@ -475,7 +546,8 @@ static void usage(const char *p)
     puts("     右鍵雙擊代表確認，虛線轉實線並開始依路徑移動（確認前可反覆改目標點與路徑類型）");
     puts("  5) 每段確認後可用該段終點接續下一段，最多同時保留 5 段；走完會自動清除該段軌跡");
     puts("  6) START 後右上角可用返回鍵撤回最後一段（若該段已在執行中則不可撤回）");
-    puts("  7) 每段皆採 0->勻速->0 的速度剖面，按 STOP 會中斷並清空路徑/座標（需重新點選起點）\n");
+    puts("  7) 每段皆採 0->勻速->0 的速度剖面，按 STOP 會中斷並清空路徑/座標（需重新點選起點)");
+    puts("===========================================================\n");
 }
 
 static void gui_report_alert(int level, const char *fmt, ...)
@@ -489,7 +561,22 @@ static void gui_report_alert(int level, const char *fmt, ...)
     map_gui_push_alert(level, buf);
 }
 
-static const char *kBncRinexDir = "./BRDM";
+static const char *kBncRinexDirs[] = {
+    "./BRDM",
+    "./data/ephemeris/BRDM"
+};
+
+static const char *resolve_bnc_rinex_dir(void)
+{
+    struct stat st;
+    for (size_t i = 0; i < sizeof(kBncRinexDirs) / sizeof(kBncRinexDirs[0]); ++i) {
+        const char *dir = kBncRinexDirs[i];
+        if (stat(dir, &st) == 0 && S_ISDIR(st.st_mode)) {
+            return dir;
+        }
+    }
+    return kBncRinexDirs[0];
+}
 
 static int is_leap_year(int year)
 {
@@ -582,7 +669,9 @@ static void find_latest_rinex_for_system(char *out, size_t size, char sys_prefix
     const int kMinSatsPerSystem = 8;
     out[0] = '\0';
 
-    DIR *dp = opendir(kBncRinexDir);
+    const char *rinex_dir = resolve_bnc_rinex_dir();
+
+    DIR *dp = opendir(rinex_dir);
     if (!dp) return;
 
     time_t best_t = (time_t)0;
@@ -596,7 +685,7 @@ static void find_latest_rinex_for_system(char *out, size_t size, char sys_prefix
         if (strncmp(name, "BRDC00WRD_S_", 12) != 0) continue;
 
         char full[PATH_MAX];
-        snprintf(full, sizeof(full), "%s/%s", kBncRinexDir, name);
+        snprintf(full, sizeof(full), "%s/%s", rinex_dir, name);
 
         struct stat st;
         if (stat(full, &st) != 0) continue;
@@ -636,6 +725,16 @@ static int rinex_is_within_2h(const char *path)
     return fabs(difftime(t_now, t_file)) <= 7200.0;
 }
 
+static void clear_stale_rinex_paths(char *bds_path, char *gps_path)
+{
+    if (bds_path && bds_path[0] != '\0' && !rinex_is_within_2h(bds_path)) {
+        bds_path[0] = '\0';
+    }
+    if (gps_path && gps_path[0] != '\0' && !rinex_is_within_2h(gps_path)) {
+        gps_path[0] = '\0';
+    }
+}
+
 static int should_try_periodic_rinex_refresh(uint8_t signal_mode,
                                              long long *last_refresh_key)
 {
@@ -657,19 +756,22 @@ static int should_try_periodic_rinex_refresh(uint8_t signal_mode,
     return 1;
 }
 
+/* 只在星曆新鮮（2 小時內）時才更新 GUI 顯示；否則顯示空白 */
+static void map_gui_set_rinex_names_if_fresh(const char *bds, const char *gps)
+{
+    const char *show_bds = (bds && bds[0] && rinex_is_within_2h(bds)) ? bds : "";
+    const char *show_gps = (gps && gps[0] && rinex_is_within_2h(gps)) ? gps : "";
+    map_gui_set_rinex_names(show_bds, show_gps);
+}
+
 static void refresh_latest_rinex_if_needed(sim_config_t *cfg, double reload_bdt)
 {
     char latest_bds[256] = {0};
     char latest_gps[256] = {0};
     find_latest_rinex_paths(latest_bds, sizeof(latest_bds), latest_gps, sizeof(latest_gps));
+    clear_stale_rinex_paths(latest_bds, latest_gps);
     if (latest_bds[0] == '\0' && latest_gps[0] == '\0') {
-        fprintf(stderr, "[rinex] 定期檢查：找不到可用星曆檔 (%s/BRDC00WRD_S_YYYYDDDHH00_01H_MN*)\n", kBncRinexDir);
-        return;
-    }
-
-    if ((latest_bds[0] != '\0' && !rinex_is_within_2h(latest_bds)) &&
-        (latest_gps[0] != '\0' && !rinex_is_within_2h(latest_gps))) {
-        fprintf(stderr, "[rinex] 定期檢查：最新星曆超過 2 小時，保留目前星曆\n");
+        fprintf(stderr, "[rinex] 定期檢查：找不到可用星曆檔 (%s/BRDC00WRD_S_YYYYDDDHH00_01H_MN*)\n", resolve_bnc_rinex_dir());
         return;
     }
 
@@ -678,17 +780,21 @@ static void refresh_latest_rinex_if_needed(sim_config_t *cfg, double reload_bdt)
     snprintf(old_bds, sizeof(old_bds), "%s", cfg->rinex_file_bds);
     snprintf(old_gps, sizeof(old_gps), "%s", cfg->rinex_file_gps);
 
-    if (latest_bds[0] != '\0' && rinex_is_within_2h(latest_bds))
+    if (latest_bds[0] != '\0')
         snprintf(cfg->rinex_file_bds, sizeof(cfg->rinex_file_bds), "%s", latest_bds);
-    if (latest_gps[0] != '\0' && rinex_is_within_2h(latest_gps))
+    else
+        cfg->rinex_file_bds[0] = '\0';
+    if (latest_gps[0] != '\0')
         snprintf(cfg->rinex_file_gps, sizeof(cfg->rinex_file_gps), "%s", latest_gps);
+    else
+        cfg->rinex_file_gps[0] = '\0';
 
     if (!reload_simulator_nav(cfg, reload_bdt)) {
         fprintf(stderr, "[rinex] 定期檢查：重載失敗，保留原星曆\n");
         return;
     }
 
-    map_gui_set_rinex_names(cfg->rinex_file_bds, cfg->rinex_file_gps);
+    map_gui_set_rinex_names_if_fresh(cfg->rinex_file_bds, cfg->rinex_file_gps);
     if (strcmp(old_bds, cfg->rinex_file_bds) != 0)
         printf("[rinex] BDS 自動切換星曆: %s -> %s\n", old_bds, cfg->rinex_file_bds);
     else
@@ -1251,26 +1357,28 @@ static void stop_and_reset_runtime_state(sim_config_t *cfg,
     pthread_mutex_unlock(&g_gui_spectrum_mtx);
     map_gui_set_llh_ready(0);
     map_gui_clear_path_segments();
+    map_gui_reset_interaction_state();
     map_gui_set_single_prn_candidates(NULL, 0);
     if (cfg) refresh_preview_prn_mask(NULL, false, cfg->llh, 0.0);
 
     if (usrp_ready && *usrp_ready) {
-        rid_rx_stop();        /* 先停 RX stream，再釋放 USRP 裝置 */
-        usrp_close();
-        *usrp_ready = false;
+        /* STOP: do not close USRP device, only cancel next scheduled TX start. */
+        rid_rx_stop();
         if (usrp_scheduled) *usrp_scheduled = false;
     }
 
-    /* 重新以 RX-only 模式開啟裝置，讓 Remote ID 在待機時繼續偵測 */
-    if (usrp_open_dev_only() == 0) {
-        rid_rx_start(0.0625, 30.0);
-    }
+    /* Standby no longer reopens USRP RX automatically after STOP. */
 
     if (prompt_shown) *prompt_shown = false;
 }
 
 int main(int argc, char *argv[])
 {
+    setvbuf(stdout, NULL, _IOLBF, 0);
+    setvbuf(stderr, NULL, _IOLBF, 0);
+    atexit(restore_tty_on_exit);
+    install_signal_handlers();
+
     const int help_only = cli_requests_help_only(argc, argv);
     int cuda_runtime_enabled = cuda_runtime_is_enabled_by_env();
     int cuda_runtime_smoke_ok = 1;
@@ -1312,6 +1420,11 @@ int main(int argc, char *argv[])
     map_gui_set_control_defaults(&cfg);
     map_gui_set_screen_index(gui_screen_index);
 
+    if (help_only) {
+        usage("./bds-sim");
+        return 0;
+    }
+
     bool llh_set = false;
     bool running = false;
     bool gui_started = false;
@@ -1325,16 +1438,25 @@ int main(int argc, char *argv[])
     double usrp_freq_in_use = 0.0;
     bool usrp_external_clk_in_use = true;
     bool usrp_byte_in_use = false;
+    bool rid_detection_active = false;
+    bool crossbow_unlocked = false;
     double next_bdt = 0.0;
     long long last_hourly_rinex_refresh_key = -1;
     double hold_llh[3] = {0};
+    const double crossbow_fixed_lat = 22.758423;
+    const double crossbow_fixed_lon = 120.337893;
+    const double crossbow_fixed_h = 0.0;
+    double spoof_llh[3] = {0.0, 0.0, 0.0};
+    bool spoof_llh_set = false;
+    int last_standby_mode_selection = -99;
     clear_queued_paths();
 
     {
         find_latest_rinex_paths(cfg.rinex_file_bds, sizeof(cfg.rinex_file_bds),
                                 cfg.rinex_file_gps, sizeof(cfg.rinex_file_gps));
+        clear_stale_rinex_paths(cfg.rinex_file_bds, cfg.rinex_file_gps);
     }
-    map_gui_set_rinex_names(cfg.rinex_file_bds, cfg.rinex_file_gps);
+    map_gui_set_rinex_names_if_fresh(cfg.rinex_file_bds, cfg.rinex_file_gps);
         int internet_ok = check_internet_connectivity();
         int catalog_ok = (cfg.rinex_file_bds[0] != '\0' && rinex_is_within_2h(cfg.rinex_file_bds));
         int spoof_allowed_now = (internet_ok && catalog_ok);
@@ -1342,27 +1464,23 @@ int main(int argc, char *argv[])
         if (!catalog_ok && internet_ok) {
         fprintf(stderr,
             "[warn] 有網路但沒有可用星曆，僅可使用 JAM 模式\n");
-        gui_report_alert(1,
-                 "Network is available but no valid RINEX file is loaded. Only JAM mode is available.");
+        gui_report_alert(1, "__i18n__:alert.net_no_rinex_jam_only");
         } else if (!catalog_ok && !internet_ok) {
         fprintf(stderr,
             "[warn] 無網路且沒有可用星曆，僅可使用 JAM 模式\n");
-        gui_report_alert(1,
-                 "No internet and no valid RINEX file. Only JAM mode is available.");
+        gui_report_alert(1, "__i18n__:alert.no_net_no_rinex_jam_only");
         }
 
         if (cfg.rinex_file_bds[0] == '\0' && cfg.rinex_file_gps[0] == '\0') {
         fprintf(stderr,
                 "[warn] 找不到可用星曆檔 (%s/BRDC00WRD_S_YYYYDDDHH00_01H_MN*)，僅可使用 JAM 模式\n",
-                kBncRinexDir);
-        gui_report_alert(1,
-                         "No valid RINEX file found. Only JAM mode is available.");
-        } else if (!rinex_is_within_2h(cfg.rinex_file_bds)) {
+            resolve_bnc_rinex_dir());
+        gui_report_alert(1, "__i18n__:alert.no_valid_rinex_jam_only");
+        } else if (cfg.rinex_file_bds[0] != '\0' && !rinex_is_within_2h(cfg.rinex_file_bds)) {
         fprintf(stderr,
                 "[warn] 最新星曆檔超過 2 小時，僅可使用 JAM 模式或更新 %s 後再啟動一般模式\n",
-                kBncRinexDir);
-        gui_report_alert(1,
-                         "Latest RINEX is older than 2 hours. Update BRDM before using general mode.");
+            resolve_bnc_rinex_dir());
+        gui_report_alert(1, "__i18n__:alert.rinex_stale_update_brdm");
     }
 
     usage("./bds-sim");
@@ -1386,7 +1504,7 @@ int main(int argc, char *argv[])
                 simulator_ready = true;
             } else {
                 fprintf(stderr, "[warn] GUI 待命初始化失敗，將在 --start 時重試\n");
-                gui_report_alert(1, "GUI standby initialization failed. It will retry on START.");
+                gui_report_alert(1, "__i18n__:alert.gui_standby_init_retry");
             }
         }
 
@@ -1394,16 +1512,8 @@ int main(int argc, char *argv[])
         gui_started = true;
         map_gui_set_run_state(0);
         map_gui_set_llh_ready(0);
-        gnss_rx_start();
-
-            /* ── 立即以 RX-only 模式開啟 USRP，啟動 Remote ID 接收器 ──
-             *    不等使用者按 START，無人機 ID 偵測從程式啟動就開始。     */
-            if (usrp_open_dev_only() == 0) {
-                void *dji_mgr_early = map_gui_get_dji_detect_manager();
-                if (dji_mgr_early) rid_rx_set_dji_detect_manager(dji_mgr_early);
-                rid_rx_start(0.0625, 30.0);
-            }
-            wifi_rid_start_from_env();
+        wifi_rid_stop();
+        ble_rid_stop();
     }
 
     char line[1024];
@@ -1415,14 +1525,18 @@ int main(int argc, char *argv[])
     }
     if (pthread_create(&input_tid, NULL, stdin_reader_thread, NULL) != 0) {
         fprintf(stderr, "[error] 無法建立輸入執行緒\n");
-        gui_report_alert(2, "Failed to create input thread.");
+        gui_report_alert(2, "__i18n__:alert.input_thread_create_failed");
         disable_immediate_stdin_mode();
         return 1;
     }
 
     while (1) {
+        if (g_term_signal != 0) {
+            fast_exit_now(128 + (int)g_term_signal, "signal");
+        }
+
         if (!running && !prompt_shown) {
-            printf("bds-sim> ");
+            printf("\r\033[2Kbds-sim> ");
             fflush(stdout);
             prompt_shown = true;
         }
@@ -1438,38 +1552,216 @@ int main(int argc, char *argv[])
         bool gui_launch = map_gui_consume_launch_request() != 0;
         bool gui_stop = map_gui_consume_stop_request() != 0;
         bool gui_exit = map_gui_consume_exit_request() != 0;
+        bool gui_crossbow_unlock = map_gui_consume_crossbow_unlock_request() != 0;
         double picked_lat = 0.0, picked_lon = 0.0, picked_h = 0.0;
         bool gui_picked_llh = map_gui_consume_selected_llh(&picked_lat, &picked_lon, &picked_h) != 0;
+        char wifi_allow_ids_csv[2048] = {0};
+        bool gui_wifi_allow_apply =
+            map_gui_consume_wifi_rid_allow_ids(wifi_allow_ids_csv, sizeof(wifi_allow_ids_csv)) != 0;
+        char wifi_block_ids_csv[2048] = {0};
+        bool gui_wifi_block_apply =
+            map_gui_consume_wifi_rid_block_ids(wifi_block_ids_csv, sizeof(wifi_block_ids_csv)) != 0;
+        int wifi_rid_mixed_enable = 1;
+        bool gui_wifi_mode_apply =
+            map_gui_consume_wifi_rid_mixed_mode(&wifi_rid_mixed_enable) != 0;
         line_cmd_t cmd = {0};
+        sim_config_t live_cfg = cfg;
+        map_gui_get_control_config(&live_cfg, &g_target_cn0);
+        const int live_selection = live_cfg.interference_selection;
+        const bool want_rid_detection = (crossbow_unlocked && live_selection == 2);
+
+        if (!running && live_selection != last_standby_mode_selection) {
+            if (live_selection == 2) {
+                cfg.llh[0] = crossbow_fixed_lat;
+                cfg.llh[1] = crossbow_fixed_lon;
+                cfg.llh[2] = crossbow_fixed_h;
+                llh_set = true;
+                g_receiver_lat_deg = cfg.llh[0];
+                g_receiver_lon_deg = cfg.llh[1];
+                g_receiver_valid = 1;
+                wifi_rid_set_observer_pos(cfg.llh[0], cfg.llh[1]);
+                map_gui_set_selected_llh_centered(cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+                fprintf(stderr, "[crossbow] 固定位置: %.6f°, %.6f° (高科)\n",
+                        cfg.llh[0], cfg.llh[1]);
+            } else if (live_selection == 0 && spoof_llh_set) {
+                cfg.llh[0] = spoof_llh[0];
+                cfg.llh[1] = spoof_llh[1];
+                cfg.llh[2] = spoof_llh[2];
+                llh_set = true;
+                g_receiver_lat_deg = cfg.llh[0];
+                g_receiver_lon_deg = cfg.llh[1];
+                g_receiver_valid = 1;
+                wifi_rid_set_observer_pos(cfg.llh[0], cfg.llh[1]);
+                map_gui_set_selected_llh_centered(cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+            } else if (live_selection == 1) {
+                llh_set = false;
+                g_receiver_valid = 0;
+            }
+            last_standby_mode_selection = live_selection;
+        }
+
+        if (want_rid_detection != rid_detection_active) {
+            wifi_rid_stop();
+            ble_rid_stop();
+            if (want_rid_detection) {
+                setenv("BDS_WIFI_RID_USE_SUDO", "1", 1);
+                setenv("BDS_BLE_RID_USE_SUDO", "1", 1);
+                setenv("BDS_WIFI_RID_SUDO_NONINTERACTIVE", "1", 1);
+                setenv("BDS_BLE_RID_SUDO_NONINTERACTIVE", "1", 1);
+                wifi_rid_start_from_env();
+                ble_rid_start_from_env();
+                fprintf(stderr, "[crossbow] WiFi/BLE detection enabled (crossbow mode)\n");
+            } else {
+                setenv("BDS_WIFI_RID_USE_SUDO", "0", 1);
+                setenv("BDS_BLE_RID_USE_SUDO", "0", 1);
+                fprintf(stderr, "[rid] WiFi/BLE detection disabled (spoof/jam mode)\n");
+            }
+            rid_detection_active = want_rid_detection;
+        }
+
+        if (gui_wifi_allow_apply) {
+            const char *csv = wifi_allow_ids_csv;
+            while (*csv == ' ' || *csv == '\t' || *csv == '\n' || *csv == '\r') {
+                ++csv;
+            }
+            if (*csv == '\0') {
+                unsetenv("BDS_WIFI_RID_ALLOW_IDS");
+                printf("[wifi_rid] bridge filter cleared from GUI sync\n");
+            } else {
+                setenv("BDS_WIFI_RID_ALLOW_IDS", csv, 1);
+                printf("[wifi_rid] bridge filter synced from GUI: %s\n", csv);
+            }
+            if (rid_detection_active) {
+                wifi_rid_stop();
+                wifi_rid_start_from_env();
+            }
+        }
+
+        if (gui_wifi_block_apply) {
+            const char *csv = wifi_block_ids_csv;
+            while (*csv == ' ' || *csv == '\t' || *csv == '\n' || *csv == '\r') {
+                ++csv;
+            }
+            if (*csv == '\0') {
+                unsetenv("BDS_RID_BLOCK_IDS");
+                unsetenv("BDS_WIFI_RID_BLOCK_IDS");
+                unsetenv("BDS_BLE_RID_BLOCK_IDS");
+                printf("[rid] blacklist cleared from GUI sync\n");
+            } else {
+                setenv("BDS_RID_BLOCK_IDS", csv, 1);
+                setenv("BDS_WIFI_RID_BLOCK_IDS", csv, 1);
+                setenv("BDS_BLE_RID_BLOCK_IDS", csv, 1);
+                printf("[rid] blacklist synced from GUI: %s\n", csv);
+            }
+            if (rid_detection_active) {
+                wifi_rid_stop();
+                wifi_rid_start_from_env();
+                ble_rid_stop();
+                ble_rid_start_from_env();
+            }
+        }
+
+        if (gui_wifi_mode_apply) {
+            const char *iface1 = getenv("BDS_WIFI_RID_IFACE_1");
+            const int multi_iface_mode = (iface1 && iface1[0]);
+            if (multi_iface_mode) {
+                printf("[wifi_rid] GUI mixed/rid toggle ignored in multi-interface Search&Track mode\n");
+            } else {
+                if (wifi_rid_mixed_enable) {
+                    setenv("BDS_WIFI_RID_WIFI_MODE", "mixed", 1);
+                    setenv("BDS_WIFI_RID_MIXED_ENABLE", "1", 1);
+                    printf("[wifi_rid] bridge mode synced from GUI: mixed (wifi+rid)\n");
+                } else {
+                    setenv("BDS_WIFI_RID_WIFI_MODE", "rid", 1);
+                    setenv("BDS_WIFI_RID_MIXED_ENABLE", "0", 1);
+                    printf("[wifi_rid] bridge mode synced from GUI: rid-only\n");
+                }
+                if (rid_detection_active) {
+                    wifi_rid_stop();
+                    wifi_rid_start_from_env();
+                }
+            }
+        }
+
+        if (gui_crossbow_unlock) {
+            crossbow_unlocked = true;
+            setenv("BDS_WIFI_RID_USE_SUDO", "1", 1);
+            setenv("BDS_BLE_RID_USE_SUDO", "1", 1);
+            setenv("BDS_WIFI_RID_SUDO_NONINTERACTIVE", "1", 1);
+            setenv("BDS_BLE_RID_SUDO_NONINTERACTIVE", "1", 1);
+            if (want_rid_detection) {
+                wifi_rid_stop();
+                ble_rid_stop();
+                wifi_rid_start_from_env();
+                ble_rid_start_from_env();
+                rid_detection_active = true;
+                map_gui_push_alert(0, "__i18n__:alert.crossbow_unlocked_detection_enabled");
+                fprintf(stderr, "[crossbow] unlocked: WiFi/BLE detection started\n");
+            } else {
+                map_gui_push_alert(0, "__i18n__:alert.crossbow_unlocked_switch_mode");
+                fprintf(stderr, "[crossbow] unlocked: waiting for crossbow mode to start WiFi/BLE detection\n");
+            }
+        }
 
         if (gui_picked_llh && !running) {
-            cfg.llh[0] = picked_lat;
-            cfg.llh[1] = picked_lon;
-            cfg.llh[2] = picked_h;
-            llh_set = true;
-            printf("[cfg] 地圖起點已更新 LLH: %.6f,%.6f,%.2f\n", cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+            if (live_selection == 0) {
+                cfg.llh[0] = picked_lat;
+                cfg.llh[1] = picked_lon;
+                cfg.llh[2] = picked_h;
+                llh_set = true;
+                spoof_llh[0] = picked_lat;
+                spoof_llh[1] = picked_lon;
+                spoof_llh[2] = picked_h;
+                spoof_llh_set = true;
+                g_receiver_lat_deg = cfg.llh[0];
+                g_receiver_lon_deg = cfg.llh[1];
+                g_receiver_valid = 1;
+                wifi_rid_set_observer_pos(cfg.llh[0], cfg.llh[1]);
+                map_gui_set_selected_llh_centered(cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+                printf("[spoof] 地圖點選立即更新 LLH: %.6f,%.6f,%.2f\n",
+                       cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+            } else if (live_selection == 2) {
+                cfg.llh[0] = crossbow_fixed_lat;
+                cfg.llh[1] = crossbow_fixed_lon;
+                cfg.llh[2] = crossbow_fixed_h;
+                llh_set = true;
+                g_receiver_lat_deg = cfg.llh[0];
+                g_receiver_lon_deg = cfg.llh[1];
+                g_receiver_valid = 1;
+                wifi_rid_set_observer_pos(cfg.llh[0], cfg.llh[1]);
+                map_gui_set_selected_llh_centered(cfg.llh[0], cfg.llh[1], cfg.llh[2]);
+                map_gui_push_alert(1, "__i18n__:alert.crossbow_fixed_location");
+            } else if (live_selection == 1) {
+                map_gui_push_alert(1, "__i18n__:alert.jam_map_location_disabled");
+            }
         }
 
         /* 輪詢 GNSS-SDR 背景定位結果 */
         if (!running) {
             double rx_lat = 0.0, rx_lon = 0.0, rx_h = 0.0;
             if (gnss_rx_consume_fix(&rx_lat, &rx_lon, &rx_h)) {
-                cfg.llh[0] = rx_lat;
-                cfg.llh[1] = rx_lon;
-                cfg.llh[2] = rx_h;
-                llh_set = true;
-                g_receiver_lat_deg = rx_lat;
-                g_receiver_lon_deg = rx_lon;
-                g_receiver_valid   = 1;
-                wifi_rid_set_observer_pos(rx_lat, rx_lon);
-                map_gui_set_location_auto_zoom(rx_lat, rx_lon, rx_h);
-                char rx_msg[128];
-                snprintf(rx_msg, sizeof(rx_msg),
-                         "[GPS] \u81ea\u52d5\u5b9a\u4f4d: %.6f\u00b0, %.6f\u00b0, %.1f m",
-                         rx_lat, rx_lon, rx_h);
-                map_gui_push_alert(0, rx_msg);
-                printf("[gnss_rx] 自動設定起始座標: %.6f, %.6f, %.1f m\n",
-                       rx_lat, rx_lon, rx_h);
+                if (live_selection == 0 && !spoof_llh_set) {
+                    cfg.llh[0] = rx_lat;
+                    cfg.llh[1] = rx_lon;
+                    cfg.llh[2] = rx_h;
+                    llh_set = true;
+                    spoof_llh[0] = rx_lat;
+                    spoof_llh[1] = rx_lon;
+                    spoof_llh[2] = rx_h;
+                    spoof_llh_set = true;
+                    g_receiver_lat_deg = rx_lat;
+                    g_receiver_lon_deg = rx_lon;
+                    g_receiver_valid = 1;
+                    wifi_rid_set_observer_pos(rx_lat, rx_lon);
+                    map_gui_set_location_auto_zoom(rx_lat, rx_lon, rx_h);
+                    char rx_msg[128];
+                    snprintf(rx_msg, sizeof(rx_msg),
+                             "[GPS] \u81ea\u52d5\u5b9a\u4f4d: %.6f\u00b0, %.6f\u00b0, %.1f m",
+                             rx_lat, rx_lon, rx_h);
+                    map_gui_push_alert(0, rx_msg);
+                    printf("[gnss_rx] 自動設定起始座標: %.6f, %.6f, %.1f m\n",
+                           rx_lat, rx_lon, rx_h);
+                }
             }
         }
 
@@ -1488,28 +1780,16 @@ int main(int argc, char *argv[])
                 usage("./bds-sim");
                 if (!running) continue;
             }
-            if (cmd.quit) {
-                break;
-            }
         }
 
         if (gui_start) cmd.start = true;
         if (gui_stop) cmd.stop = true;
         if (gui_exit) {
-            // Immediate hard-exit path requested: do not process USRP/simulator
-            // shutdown tail once EXIT is pressed in GUI.
-            gnss_rx_cancel();
-            rid_rx_stop();
-            wifi_rid_stop();
-            _exit(0);
+            fast_exit_now(0, "GUI EXIT");
         }
 
         if (cmd.quit) {
-            // CLI quit should follow the same immediate-exit behavior.
-            gnss_rx_cancel();
-            rid_rx_stop();
-            wifi_rid_stop();
-            _exit(0);
+            fast_exit_now(0, "CLI --exit");
         }
 
         if (!running) {
@@ -1526,12 +1806,28 @@ int main(int argc, char *argv[])
             {
                 find_latest_rinex_paths(cfg.rinex_file_bds, sizeof(cfg.rinex_file_bds),
                                         cfg.rinex_file_gps, sizeof(cfg.rinex_file_gps));
+                clear_stale_rinex_paths(cfg.rinex_file_bds, cfg.rinex_file_gps);
             }
-            map_gui_set_rinex_names(cfg.rinex_file_bds, cfg.rinex_file_gps);
+            map_gui_set_rinex_names_if_fresh(cfg.rinex_file_bds, cfg.rinex_file_gps);
 
             const bool spoof_selected = interference_is_spoof_like(preview_cfg.interference_selection);
             const bool jam_selected = (preview_cfg.interference_selection == 1);
             const bool llh_required = spoof_selected;
+
+            if (preview_cfg.interference_selection == 0 && spoof_llh_set) {
+                cfg.llh[0] = spoof_llh[0];
+                cfg.llh[1] = spoof_llh[1];
+                cfg.llh[2] = spoof_llh[2];
+                llh_set = true;
+            } else if (preview_cfg.interference_selection == 2) {
+                cfg.llh[0] = crossbow_fixed_lat;
+                cfg.llh[1] = crossbow_fixed_lon;
+                cfg.llh[2] = crossbow_fixed_h;
+                llh_set = true;
+            } else if (preview_cfg.interference_selection == 1) {
+                llh_set = false;
+                g_receiver_valid = 0;
+            }
 
             map_gui_set_llh_ready((llh_set || !llh_required || jam_selected) ? 1 : 0);
             if (llh_set) {
@@ -1543,26 +1839,13 @@ int main(int argc, char *argv[])
                 g_receiver_valid = 0;
             }
 
-            /* Crossbow 模式需要自動設定座標 (但 SPOOF 模式不要) */
-            if (!llh_set && llh_required && preview_cfg.interference_selection == 2) {
-                cfg.llh[0] = 22.758423;
-                cfg.llh[1] = 120.337893;
-                cfg.llh[2] = 0.0;
-                llh_set = true;
-                g_receiver_lat_deg = cfg.llh[0];
-                g_receiver_lon_deg = cfg.llh[1];
-                g_receiver_valid = 1;
-                wifi_rid_set_observer_pos(cfg.llh[0], cfg.llh[1]);
-                map_gui_set_location_auto_zoom(cfg.llh[0], cfg.llh[1], cfg.llh[2]);
-                fprintf(stderr, "[crossbow] 自動設定位置: 22.758423°, 120.337893° (Crossbow 預設)\n");
-                map_gui_push_alert(0, "[Crossbow] 已設定位置: 22.758423°, 120.337893°");
-            }
+            /* Crossbow 固定位置由模式切換與每輪模式同步處理，不再沿用其他模式點位。 */
             if (!llh_set && llh_required) {
                 map_gui_set_single_prn_candidates(NULL, 0);
                 refresh_preview_prn_mask(NULL, false, cfg.llh, 0.0);
                 if (cmd.start) {
-                    fprintf(stderr, "[error] SPOOF/CROSSBOW 模式需要定位，且無法自動取得預設 NFZ 中心\n");
-                    gui_report_alert(2, "SPOOF/CROSSBOW mode requires a location, and no NFZ center could be determined.");
+                    fprintf(stderr, "[error] SPOOF/CROSSBOW 模式需要先設定定位\n");
+                    gui_report_alert(2, "__i18n__:alert.spoof_crossbow_need_location");
                     map_gui_set_run_state(0);
                 }
                 usleep(20000);
@@ -1608,7 +1891,7 @@ int main(int argc, char *argv[])
 
             if (preview_cfg.interference_selection < 0) {
                 fprintf(stderr, "[error] 請先選擇 INTERFERE 的模式 (SPOOF / CROSSBOW 或 JAM)\n");
-                gui_report_alert(2, "Please choose INTERFERE mode first: SPOOF / CROSSBOW or JAM.");
+                gui_report_alert(2, "__i18n__:alert.choose_interfere_mode");
                 map_gui_set_run_state(0);
                 continue;
             }
@@ -1623,7 +1906,7 @@ int main(int argc, char *argv[])
 
             if (launch_requested && cfg.interference_selection != 2) {
                 crossbow_wait_launch = false;
-                map_gui_push_alert(1, "Crossbow launch canceled: mode changed.");
+                map_gui_push_alert(1, "__i18n__:alert.crossbow_launch_canceled_mode_changed");
                 usleep(20000);
                 continue;
             }
@@ -1636,8 +1919,7 @@ int main(int argc, char *argv[])
                 }
                 if (!llh_set) {
                     fprintf(stderr, "[error] CROSSBOW 模式需要先取得設備定位\n");
-                    gui_report_alert(2,
-                                     "CROSSBOW mode requires a resolved device location before START.");
+                    gui_report_alert(2, "__i18n__:alert.crossbow_need_resolved_location");
                     map_gui_set_run_state(0);
                     continue;
                 }
@@ -1648,7 +1930,7 @@ int main(int argc, char *argv[])
                 crossbow_wait_launch = true;
                 printf("[crossbow] START 進入待命偵測: %.6f, %.6f, %.2f\n",
                        cfg.llh[0], cfg.llh[1], cfg.llh[2]);
-                map_gui_push_alert(0, "Crossbow armed. Press LAUNCH to transmit.");
+                map_gui_push_alert(0, "__i18n__:alert.crossbow_armed_press_launch");
                 usleep(20000);
                 continue;
             }
@@ -1661,8 +1943,7 @@ int main(int argc, char *argv[])
                 }
                 if (!llh_set) {
                     fprintf(stderr, "[error] CROSSBOW 模式需要先取得設備定位\n");
-                    gui_report_alert(2,
-                                     "CROSSBOW mode requires a resolved device location before START.");
+                    gui_report_alert(2, "__i18n__:alert.crossbow_need_resolved_location");
                     map_gui_set_run_state(0);
                     continue;
                 }
@@ -1676,23 +1957,22 @@ int main(int argc, char *argv[])
                 {
                     find_latest_rinex_paths(cfg.rinex_file_bds, sizeof(cfg.rinex_file_bds),
                                             cfg.rinex_file_gps, sizeof(cfg.rinex_file_gps));
+                    clear_stale_rinex_paths(cfg.rinex_file_bds, cfg.rinex_file_gps);
                 }
-                map_gui_set_rinex_names(cfg.rinex_file_bds, cfg.rinex_file_gps);
+                map_gui_set_rinex_names_if_fresh(cfg.rinex_file_bds, cfg.rinex_file_gps);
                 if (cfg.rinex_file_bds[0] == '\0') {
                     fprintf(stderr,
                             "[error] 一般模式需要星曆：找不到可用星曆檔 (%s/BRDC00WRD_S_YYYYDDDHH00_01H_MN*)\n",
-                            kBncRinexDir);
-                    gui_report_alert(2,
-                                     "General mode requires a valid RINEX file, but none was found.");
+                            resolve_bnc_rinex_dir());
+                    gui_report_alert(2, "__i18n__:alert.general_need_valid_rinex");
                     map_gui_set_run_state(0);
                     continue;
                 }
                 if (!rinex_is_within_2h(cfg.rinex_file_bds)) {
                     fprintf(stderr,
                             "[error] 一般模式需要 2 小時內星曆，請先更新 %s\n",
-                            kBncRinexDir);
-                    gui_report_alert(2,
-                                     "General mode requires RINEX data within 2 hours. Please update BRDM.");
+                            resolve_bnc_rinex_dir());
+                    gui_report_alert(2, "__i18n__:alert.general_need_fresh_rinex");
                     map_gui_set_run_state(0);
                     continue;
                 }
@@ -1727,7 +2007,7 @@ int main(int argc, char *argv[])
                               cfg.usrp_external_clk ? 1 : 0,
                               cfg.byte_output ? USRP_SAMPLE_FMT_BYTE : USRP_SAMPLE_FMT_SHORT) != 0) {
                     fprintf(stderr, "[warn] USRP 初始化失敗或未連線，將僅產生檔案輸出\n");
-                    gui_report_alert(1, "USRP initialization failed or device is disconnected. File output mode will be used.");
+                    gui_report_alert(1, "__i18n__:alert.usrp_init_failed_file_only");
                 } else {
                     usrp_ready = true;
                     usrp_freq_in_use = tx_freq;
@@ -1735,13 +2015,7 @@ int main(int argc, char *argv[])
                     usrp_gain_in_use = cfg.tx_gain;
                     usrp_external_clk_in_use = cfg.usrp_external_clk;
                     usrp_byte_in_use = cfg.byte_output;
-                    /* TX 初始化完成後，啟動 Remote ID 接收器 (共享同一 usrp_dev) */
-                    /* 先連接 DjiDetectManager 指針，再啟動 RID 接收器 */
-                    void *dji_mgr = map_gui_get_dji_detect_manager();
-                    if (dji_mgr) {
-                        rid_rx_set_dji_detect_manager(dji_mgr);
-                    }
-                    rid_rx_start(0.0625, cfg.tx_gain > 50.0 ? 30.0 : cfg.tx_gain);
+                    /* RX 接收器已停用：僅 TX 模式，不啟動 rid_rx */
                 }
             }
 
@@ -1758,7 +2032,7 @@ int main(int argc, char *argv[])
             double start_sow = 0.0;
             if (utc_to_bdt(now_utc, &start_week, &start_sow) != 0) {
                 fprintf(stderr, "[error] 目前時間轉換失敗\n");
-                gui_report_alert(2, "Current time conversion failed.");
+                gui_report_alert(2, "__i18n__:alert.time_conversion_failed");
                 map_gui_set_run_state(0);
                 continue;
             }
@@ -1770,7 +2044,7 @@ int main(int argc, char *argv[])
             if (!cfg.interference_mode && !simulator_ready) {
                 if (!init_simulator(&cfg, next_bdt)) {
                     fprintf(stderr, "[error] 初始化失敗\n");
-                    gui_report_alert(2, "Simulator initialization failed.");
+                    gui_report_alert(2, "__i18n__:alert.simulator_init_failed");
                     map_gui_set_run_state(0);
                     continue;
                 }
@@ -1780,23 +2054,18 @@ int main(int argc, char *argv[])
             if (!cuda_runtime_enabled) {
                 fprintf(stderr,
                         "[error] CUDA 執行已被停用。若要啟用請移除 BDS_DISABLE_CUDA 或設為 0\n");
-                gui_report_alert(2,
-                                 "CUDA runtime is disabled. Remove BDS_DISABLE_CUDA (or set it to 0) to enable.");
+                gui_report_alert(2, "__i18n__:alert.cuda_runtime_disabled");
                 map_gui_set_run_state(0);
                 continue;
             }
 
             if (!cuda_runtime_smoke_ok) {
                 if (env_truthy("BDS_ENFORCE_CUDA_SMOKE")) {
-                    gui_report_alert(2,
-                                     "CUDA runtime probe failed in this environment (driver/toolkit mismatch likely). "
-                                     "Use matching CUDA toolkit version (e.g., driver 13.1 with nvcc 13.1). "
-                                     "Unset BDS_ENFORCE_CUDA_SMOKE or set BDS_SKIP_CUDA_SMOKE=1 to force run.");
+                    gui_report_alert(2, "__i18n__:alert.cuda_probe_strict_failed");
                     map_gui_set_run_state(0);
                     continue;
                 }
-                gui_report_alert(1,
-                                 "CUDA runtime probe failed, but strict check is disabled. Continuing with forced CUDA run.");
+                gui_report_alert(1, "__i18n__:alert.cuda_probe_force_continue");
             }
 
             // Switch to running UI only after all start prechecks pass.
@@ -1807,7 +2076,7 @@ int main(int argc, char *argv[])
                 gui_started = true;
             }
             update_map_gui_start(next_bdt);
-            map_gui_set_rinex_names(cfg.rinex_file_bds, cfg.rinex_file_gps);
+            map_gui_set_rinex_names_if_fresh(cfg.rinex_file_bds, cfg.rinex_file_gps);
 
             if (!cfg.interference_mode) {
                 printf("[cfg] 使用最新星曆 BDS: %s  GPS: %s\n",
@@ -1878,7 +2147,7 @@ int main(int argc, char *argv[])
                 print_pending_path_queue();
             } else {
                 fprintf(stderr, "[warn] 路徑佇列已滿 (%d)，已忽略: %s\n", MAX_PATH_QUEUE, cmd.path_file);
-                gui_report_alert(1, "Path queue is full (max 5 segments). New path was ignored.");
+                gui_report_alert(1, "__i18n__:alert.path_queue_full_max5");
             }
         }
 
@@ -1888,7 +2157,7 @@ int main(int argc, char *argv[])
             uint32_t traj_dur = 0;
             if (load_last_llh_from_path(q.path_file, last_llh, &traj_dur) != 0) {
                 fprintf(stderr, "[error] 軌跡檔讀取失敗，已跳過: %s\n", q.path_file);
-                gui_report_alert(2, "Path file read failed. The segment was skipped.");
+                gui_report_alert(2, "__i18n__:alert.path_file_read_failed");
                 continue;
             }
 
@@ -1972,9 +2241,13 @@ int main(int argc, char *argv[])
     gnss_rx_cancel();
     rid_rx_stop();
     wifi_rid_stop();
+    ble_rid_stop();
     if (gui_started) stop_map_gui();
     if (usrp_ready) usrp_close();
     if (simulator_ready) cleanup_simulator();
     cleanup_runtime_path_files();
+    if (g_term_signal != 0) {
+        return 128 + (int)g_term_signal;
+    }
     return 0;
 }

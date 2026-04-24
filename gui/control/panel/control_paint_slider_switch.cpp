@@ -32,9 +32,25 @@ void control_draw_slider(QPainter &p, const Rect &r, const QColor &border,
   }
 
   QRect label_rect(label_x, r.y, std::max(24, label_w), r.h);
+  control_paint_apply_slider_label_adjustment(&label_rect);
+  if (label_rect.width() < 24)
+    label_rect.setWidth(24);
   int track_start = std::min(std::max(min_track_x, r.x + 8), vrect.x - 20);
   int track_end = vrect.x - 10;
   int track_w = std::max(10, track_end - track_start);
+
+  QRect value_rect(vrect.x, vrect.y, vrect.w, vrect.h);
+  control_paint_apply_slider_value_adjustment(&value_rect);
+  vrect.x = value_rect.x();
+  vrect.y = value_rect.y();
+  vrect.w = std::max(10, value_rect.width());
+  vrect.h = std::max(10, value_rect.height());
+
+  QRect track_rect(track_start, r.y + r.h / 2 - ((r.h > 24) ? 8 : 6) / 2,
+                   track_w, (r.h > 24) ? 8 : 6);
+  control_paint_apply_slider_track_adjustment(&track_rect);
+  track_start = track_rect.x();
+  track_w = std::max(10, track_rect.width());
 
   int label_fit_pt = control_paint_fit_text_point_size(
       old_font, name_text,
@@ -83,8 +99,8 @@ void control_draw_slider(QPainter &p, const Rect &r, const QColor &border,
   p.drawText(value_text_rect, Qt::AlignCenter, value_text);
   p.setFont(old_font);
 
-  int track_thick = (r.h > 24) ? 8 : 6;
-  int ty = r.y + r.h / 2;
+  int track_thick = std::max(4, track_rect.height());
+  int ty = track_rect.y() + track_rect.height() / 2;
   p.setPen(Qt::NoPen);
   p.setBrush(QColor(30, 45, 60, 180));
   p.drawRect(track_start, ty - track_thick / 2, track_w, track_thick);
@@ -170,6 +186,7 @@ void control_draw_slider_stacked(QPainter &p, const Rect &r,
   p.setPen(t);
   QRect caption_rect(r.x + 2, r.y + 1, std::max(8, r.w - 4),
                      std::max(8, caption_h - 2));
+  control_paint_apply_slider_label_adjustment(&caption_rect);
   p.drawText(caption_rect, Qt::AlignVCenter | Qt::AlignLeft,
              p.fontMetrics().elidedText(name_text,
                                         Qt::ElideRight, caption_rect.width()));
@@ -177,8 +194,22 @@ void control_draw_slider_stacked(QPainter &p, const Rect &r,
   int track_start = lower.x + 8;
   int track_end = vrect.x - 10;
   int track_w = std::max(10, track_end - track_start);
-  int track_thick = (lower.h > 24) ? 8 : 6;
-  int ty = lower.y + lower.h / 2;
+
+  QRect value_rect(vrect.x, vrect.y, vrect.w, vrect.h);
+  control_paint_apply_slider_value_adjustment(&value_rect);
+  vrect.x = value_rect.x();
+  vrect.y = value_rect.y();
+  vrect.w = std::max(10, value_rect.width());
+  vrect.h = std::max(10, value_rect.height());
+
+  QRect track_rect(track_start,
+                   lower.y + lower.h / 2 - ((lower.h > 24) ? 8 : 6) / 2,
+                   track_w, (lower.h > 24) ? 8 : 6);
+  control_paint_apply_slider_track_adjustment(&track_rect);
+  track_start = track_rect.x();
+  track_w = std::max(10, track_rect.width());
+  int track_thick = std::max(4, track_rect.height());
+  int ty = track_rect.y() + track_rect.height() / 2;
 
   QPainterPath vpath;
   int cl = 4;

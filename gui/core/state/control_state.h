@@ -8,6 +8,7 @@ struct GuiControlState {
     double gain;
     double fs_mhz;
     double target_cn0;
+    double selected_h_m;
     double path_vmax_kmh;
     double path_accel_mps2;
     unsigned seed;
@@ -32,6 +33,7 @@ struct GuiControlState {
     bool crossbow_dji_detected;
     double crossbow_dji_confidence;
     bool crossbow_auto_jam_enabled; // backend signal path only; UI remains in crossbow
+    bool crossbow_unlocked;
     bool show_detailed_ctrl; // <-- 新增此變數記錄頁籤狀態
     // 可展開面板狀態
     bool hover_lb_panel;  // 滑鼠懸停在左下面板

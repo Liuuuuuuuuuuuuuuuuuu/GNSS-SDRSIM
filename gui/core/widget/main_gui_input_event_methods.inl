@@ -1,3 +1,7 @@
+#ifndef MAIN_GUI_INPUT_EVENT_METHODS_INL_CONTEXT
+// This .inl requires MapWidget declarations from main_gui.cpp include context.
+// Parsed standalone by IDE diagnostics it emits false errors; leave this branch empty.
+#else
 void MapWidget::mousePressEvent(QMouseEvent *event) {
   bool running_ui = false;
   bool detailed = false;
@@ -96,10 +100,96 @@ void MapWidget::mousePressEvent(QMouseEvent *event) {
     }
 
     if (control_gear_btn_rect_.contains(event->pos())) {
-      open_control_style_dialog();
+      on_control_gear_click();
       event->accept();
       return;
     }
+
+    const bool zh = gui_language_is_zh_tw(ui_language_);
+    auto normalize_token = [](const QString &value) {
+      return value.trimmed().toLower().replace('-', ':');
+    };
+    auto push_crossbow_alert = [&](int level, const QString &zh_text, const QString &en_text) {
+      const QByteArray utf8 = (zh ? zh_text : en_text).toUtf8();
+      map_gui_push_alert(level, utf8.constData());
+    };
+    auto current_bridge_csv = [&]() {
+      std::lock_guard<std::mutex> lk(g_gui_wifi_rid_applied_mtx);
+      if (g_gui_wifi_rid_applied_initialized) {
+        return QString::fromStdString(g_gui_wifi_rid_applied_csv).trimmed();
+      }
+      const char *allow_env = std::getenv("BDS_WIFI_RID_ALLOW_IDS");
+      return QString::fromUtf8(allow_env ? allow_env : "").trimmed();
+    };
+    auto set_bridge_csv = [&](const QString &csv) {
+      const QString trimmed = csv.trimmed();
+      {
+        std::lock_guard<std::mutex> lk(g_gui_wifi_rid_allow_mtx);
+        g_gui_wifi_rid_allow_csv = trimmed.toStdString();
+      }
+      {
+        std::lock_guard<std::mutex> lk(g_gui_wifi_rid_applied_mtx);
+        g_gui_wifi_rid_applied_csv = trimmed.toStdString();
+        g_gui_wifi_rid_applied_initialized = true;
+      }
+      g_gui_wifi_rid_allow_apply_req.fetch_add(1);
+    };
+    auto set_block_bridge_csv = [&](const QString &csv) {
+      const QString trimmed = csv.trimmed();
+      {
+        std::lock_guard<std::mutex> lk(g_gui_wifi_rid_block_mtx);
+        g_gui_wifi_rid_block_csv = trimmed.toStdString();
+      }
+      {
+        std::lock_guard<std::mutex> lk(g_gui_wifi_rid_block_applied_mtx);
+        g_gui_wifi_rid_block_applied_csv = trimmed.toStdString();
+        g_gui_wifi_rid_block_applied_initialized = true;
+      }
+      g_gui_wifi_rid_block_apply_req.fetch_add(1);
+    };
+    auto current_bridge_mode_mixed = [&]() {
+      std::lock_guard<std::mutex> lk(g_gui_wifi_rid_mode_applied_mtx);
+      if (g_gui_wifi_rid_mode_applied_initialized) {
+        return g_gui_wifi_rid_mode_mixed_applied;
+      }
+      const char *mode_env = std::getenv("BDS_WIFI_RID_WIFI_MODE");
+      if (mode_env && mode_env[0] != '\0') {
+        const QString mode = QString::fromUtf8(mode_env).trimmed().toLower();
+        return mode == QStringLiteral("mixed");
+      }
+      const char *mixed_env = std::getenv("BDS_WIFI_RID_MIXED_ENABLE");
+      if (!mixed_env || mixed_env[0] == '\0') {
+        return true;
+      }
+      const QString flag = QString::fromUtf8(mixed_env).trimmed().toLower();
+      return flag == QStringLiteral("1") || flag == QStringLiteral("true") ||
+             flag == QStringLiteral("yes") || flag == QStringLiteral("on");
+    };
+    auto set_bridge_mode_mixed = [&](bool mixed_enabled) {
+      {
+        std::lock_guard<std::mutex> lk(g_gui_wifi_rid_mode_mtx);
+        g_gui_wifi_rid_mode_mixed_enabled = mixed_enabled;
+      }
+      {
+        std::lock_guard<std::mutex> lk(g_gui_wifi_rid_mode_applied_mtx);
+        g_gui_wifi_rid_mode_mixed_applied = mixed_enabled;
+        g_gui_wifi_rid_mode_applied_initialized = true;
+      }
+      g_gui_wifi_rid_mode_apply_req.fetch_add(1);
+    };
+
+    if (!crossbow_tab_original_rect_.isNull() &&
+        crossbow_tab_original_rect_.contains(event->pos())) {
+      if (crossbow_view_mode_ != 0) {
+        crossbow_view_mode_ = 0;
+        crossbow_stage_page_ = 0;
+      }
+      update(right_bottom_region());
+      event->accept();
+      return;
+    }
+
+    // Whitelist/Blacklist/Bridge tabs removed from UI.
 
     if (!crossbow_sort_btn_rect_.isNull() &&
         crossbow_sort_btn_rect_.contains(event->pos())) {
@@ -134,8 +224,82 @@ void MapWidget::mousePressEvent(QMouseEvent *event) {
         crossbow_whitelist_clear_btn_rect_.contains(event->pos())) {
       if (dji_detect_mgr_) {
         dji_detect_mgr_->clear_whitelist();
-        map_gui_push_alert(1, "Crossbow whitelist cleared");
       }
+      push_crossbow_alert(1,
+                          QString::fromUtf8("已清除 GUI 白名單"),
+                          QString("GUI whitelist cleared"));
+      update(right_bottom_region());
+      event->accept();
+      return;
+    }
+
+    if (!crossbow_whitelist_unsync_btn_rect_.isNull() &&
+        crossbow_whitelist_unsync_btn_rect_.contains(event->pos())) {
+      if (dji_detect_mgr_) {
+        dji_detect_mgr_->clear_whitelist();
+      }
+      set_bridge_csv(QString());
+      push_crossbow_alert(1,
+                          QString::fromUtf8("已重設 Capture Filter，同步關閉"),
+                          QString("Capture filter reset and sync removed"));
+      update(right_bottom_region());
+      event->accept();
+      return;
+    }
+
+    if (!crossbow_blacklist_clear_btn_rect_.isNull() &&
+        crossbow_blacklist_clear_btn_rect_.contains(event->pos())) {
+      if (dji_detect_mgr_) {
+        dji_detect_mgr_->clear_blacklist();
+      }
+      set_block_bridge_csv(QString());
+      push_crossbow_alert(1,
+                          QString::fromUtf8("已清除 GUI 黑名單，並同步關閉 Bridge 黑名單"),
+                          QString("GUI blacklist cleared and Bridge blacklist synced off"));
+      update(right_bottom_region());
+      event->accept();
+      return;
+    }
+
+    if (!crossbow_wifi_allow_apply_btn_rect_.isNull() &&
+        crossbow_wifi_allow_apply_btn_rect_.contains(event->pos())) {
+      QString csv;
+      if (dji_detect_mgr_) {
+        const auto items = dji_detect_mgr_->whitelist_items();
+        QStringList toks;
+        toks.reserve((int)items.size());
+        for (const auto &item : items) {
+          const QString key = item.trimmed();
+          if (!key.isEmpty()) {
+            toks.push_back(key);
+          }
+        }
+        csv = toks.join(',');
+      }
+      set_bridge_csv(csv);
+      push_crossbow_alert(1,
+                          csv.isEmpty()
+                    ? QString::fromUtf8("Display Filter 為空，Capture 同步關閉")
+                    : QString::fromUtf8("已套用 Display Filter 並同步 Capture"),
+                          csv.isEmpty()
+                    ? QString("Display filter empty, capture sync off")
+                    : QString("Display filter applied and capture synced"));
+      update(right_bottom_region());
+      event->accept();
+      return;
+    }
+
+    if (!crossbow_bridge_mode_checkbox_rect_.isNull() &&
+        crossbow_bridge_mode_checkbox_rect_.contains(event->pos())) {
+      const bool next_mixed_mode = !current_bridge_mode_mixed();
+      set_bridge_mode_mixed(next_mixed_mode);
+      push_crossbow_alert(1,
+                          next_mixed_mode
+            ? QString::fromUtf8("已切換為混合掃描模式（單卡相容）")
+            : QString::fromUtf8("已切換為僅 RID 模式（單卡相容）"),
+                          next_mixed_mode
+            ? QString("Capture mode switched to mixed scan (single-NIC compatibility)")
+            : QString("Capture mode switched to RID-only (single-NIC compatibility)"));
       update(right_bottom_region());
       event->accept();
       return;
@@ -143,32 +307,83 @@ void MapWidget::mousePressEvent(QMouseEvent *event) {
 
     for (const auto &hit : crossbow_whitelist_hit_rows_) {
       if (!hit.btn_rect.isNull() && hit.btn_rect.contains(event->pos())) {
-        if (dji_detect_mgr_) {
-          if (hit.currently_whitelisted) {
+        if (hit.action_kind == 2) {
+          QStringList keep;
+          const QString remove_key = normalize_token(hit.action_key);
+          const QStringList tokens = current_bridge_csv().split(',', Qt::SkipEmptyParts);
+          for (const auto &token : tokens) {
+            if (normalize_token(token) != remove_key) {
+              keep.push_back(token.trimmed());
+            }
+          }
+          if (dji_detect_mgr_) {
+            const auto items = dji_detect_mgr_->whitelist_items();
+            QStringList whitelist_keep;
+            for (const auto &item : items) {
+              if (normalize_token(item) != remove_key) {
+                whitelist_keep.push_back(item);
+              }
+            }
+            dji_detect_mgr_->set_whitelist_csv(whitelist_keep.join(','));
+          }
+          set_bridge_csv(keep.join(','));
+          push_crossbow_alert(1,
+                              QString::fromUtf8("已從 Bridge 移除: %1").arg(hit.action_key),
+                              QString("Removed from Bridge: %1").arg(hit.action_key));
+        } else if (hit.action_kind == 3) {
+          if (dji_detect_mgr_) {
+            const auto items = dji_detect_mgr_->blacklist_items();
+            QStringList keep;
+            const QString remove_key = normalize_token(hit.action_key);
+            for (const auto &item : items) {
+              if (normalize_token(item) != remove_key) {
+                keep.push_back(item);
+              }
+            }
+            dji_detect_mgr_->set_blacklist_csv(keep.join(','));
+            set_block_bridge_csv(keep.join(','));
+            push_crossbow_alert(1,
+                                QString::fromUtf8("已從黑名單移除: %1").arg(hit.action_key),
+                                QString("Removed from blacklist: %1").arg(hit.action_key));
+          }
+        } else if (dji_detect_mgr_) {
+          if (hit.action_kind == 1 || hit.currently_whitelisted) {
             const auto items = dji_detect_mgr_->whitelist_items();
             QStringList keep;
-            const QString remove_key = hit.device_id.trimmed().toLower();
+            const QString remove_key = normalize_token(hit.action_key);
             for (const auto &item : items) {
-              const QString key = item.trimmed().toLower();
-              if (key != remove_key) {
+              if (normalize_token(item) != remove_key) {
                 keep.push_back(item);
               }
             }
             dji_detect_mgr_->set_whitelist_csv(keep.join(','));
-            map_gui_push_alert(
-                1,
-                QString("Removed from whitelist: %1")
-                    .arg(hit.device_id)
-                    .toUtf8()
-                    .constData());
-          } else {
-            dji_detect_mgr_->add_whitelist_id(hit.device_id);
-            map_gui_push_alert(
-                1,
-                QString("Added to whitelist: %1")
-                    .arg(hit.device_id)
-                    .toUtf8()
-                    .constData());
+            push_crossbow_alert(1,
+                                QString::fromUtf8("已從白名單移除: %1").arg(hit.action_key),
+                                QString("Removed from whitelist: %1").arg(hit.action_key));
+          } else if (hit.action_kind == 0) {
+            const auto items = dji_detect_mgr_->blacklist_items();
+            const QString key = normalize_token(hit.action_key);
+            bool already = false;
+            for (const auto &item : items) {
+              if (normalize_token(item) == key) {
+                already = true;
+                break;
+              }
+            }
+            if (!already) {
+              dji_detect_mgr_->add_blacklist_id(hit.action_key);
+              const auto merged = dji_detect_mgr_->blacklist_items();
+              QStringList merged_csv;
+              for (const auto &item : merged) {
+                if (!item.trimmed().isEmpty()) {
+                  merged_csv.push_back(item.trimmed());
+                }
+              }
+              set_block_bridge_csv(merged_csv.join(','));
+              push_crossbow_alert(1,
+                                  QString::fromUtf8("已加入黑名單: %1").arg(hit.action_key),
+                                  QString("Added to blacklist: %1").arg(hit.action_key));
+            }
           }
         }
         update(right_bottom_region());
@@ -583,3 +798,4 @@ void MapWidget::closeEvent(QCloseEvent *event) {
   event->accept();
   QWidget::closeEvent(event);
 }
+#endif // MAIN_GUI_INPUT_EVENT_METHODS_INL_CONTEXT

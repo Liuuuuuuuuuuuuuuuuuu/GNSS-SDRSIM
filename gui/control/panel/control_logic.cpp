@@ -38,6 +38,10 @@ static inline bool spoof_like_selection(int interference_selection) {
     return interference_selection == 0 || interference_selection == 2;
 }
 
+static inline double clamp_altitude_m(double h_m) {
+    return clamp_double(std::round(h_m), -100.0, 5000.0);
+}
+
 static inline void reset_crossbow_gate_state(GuiControlState *ctrl) {
     if (!ctrl) return;
     ctrl->crossbow_direction_confirmed = false;
@@ -93,7 +97,8 @@ bool control_logic_handle_click(int x, int y, int win_width, int win_height, Gui
         }
     }
 
-    int jam_idx = segmented_index_hit(lo.sw_jam, x, y, 3);
+    const bool crossbow_unlocked = ctrl->crossbow_unlocked;
+    int jam_idx = segmented_index_hit(lo.sw_jam, x, y, crossbow_unlocked ? 3 : 2);
     if (jam_idx >= 0) {
         if (ctrl->running_ui) return false;
         reset_crossbow_gate_state(ctrl);
@@ -103,7 +108,7 @@ bool control_logic_handle_click(int x, int y, int win_width, int win_height, Gui
             return true;
         }
 
-        if (jam_idx == 1) {
+        if (crossbow_unlocked && jam_idx == 1) {
             ctrl->interference_selection = 2;
             ctrl->interference_mode = false;
             return true;
@@ -201,6 +206,12 @@ bool control_logic_handle_click(int x, int y, int win_width, int win_height, Gui
                 ctrl->target_cn0 = std::round((20.0 + (60.0 - 20.0) * t) * 2.0) / 2.0;
                 return true;
             }
+            if (rect_hit(lo.seed_slider, x, y)) {
+                double t = slider_ratio_hit(lo.seed_slider, x);
+                ctrl->selected_h_m = clamp_altitude_m(-100.0 + (5000.0 + 100.0) * t);
+                map_gui_set_selected_altitude(ctrl->selected_h_m);
+                return true;
+            }
             if (rect_hit(lo.prn_slider, x, y)) {
                 if (ctrl->sat_mode == 0) {
                     int max_prn = (ctrl->signal_mode == SIG_MODE_GPS) ? 32 : 63;
@@ -276,6 +287,12 @@ bool control_logic_handle_click(int x, int y, int win_width, int win_height, Gui
             ctrl->target_cn0 = std::round((20.0 + (60.0 - 20.0) * t) * 2.0) / 2.0;
             return true;
         } 
+        if (rect_hit(lo.seed_slider, x, y)) {
+            double t = slider_ratio_hit(lo.seed_slider, x);
+            ctrl->selected_h_m = clamp_altitude_m(-100.0 + (5000.0 + 100.0) * t);
+            map_gui_set_selected_altitude(ctrl->selected_h_m);
+            return true;
+        }
         if (rect_hit(lo.prn_slider, x, y)) {
             if (ctrl->sat_mode == 0) {
                 int max_prn = (ctrl->signal_mode == SIG_MODE_GPS) ? 32 : 63;
@@ -348,7 +365,7 @@ bool control_logic_value_text_for_field(int field_id, char *out, size_t out_sz, 
     case CTRL_SLIDER_GAIN: std::snprintf(out, out_sz, "%.2f", ctrl->gain); return true;
     case CTRL_SLIDER_FS: std::snprintf(out, out_sz, "%.1f", ctrl->fs_mhz); return true;
     case CTRL_SLIDER_CN0: std::snprintf(out, out_sz, "%.1f", ctrl->target_cn0); return true;
-    case CTRL_SLIDER_SEED: return false;
+    case CTRL_SLIDER_SEED: std::snprintf(out, out_sz, "%.0f", ctrl->selected_h_m); return true;
     case CTRL_SLIDER_PRN: 
         if (ctrl->sat_mode != 0) return false;
         std::snprintf(out, out_sz, "%d", ctrl->single_prn); return true;
@@ -386,7 +403,10 @@ bool control_logic_handle_value_input(int field_id, const char *input, GuiContro
         return true;
     }
     case CTRL_SLIDER_CN0: ctrl->target_cn0 = clamp_double(std::round(x * 2.0) / 2.0, 20.0, 60.0); return true;
-    case CTRL_SLIDER_SEED: ctrl->seed = 1; return false;
+    case CTRL_SLIDER_SEED:
+        ctrl->selected_h_m = clamp_altitude_m(x);
+        map_gui_set_selected_altitude(ctrl->selected_h_m);
+        return true;
     case CTRL_SLIDER_PRN: {
         if (ctrl->sat_mode == 0) {
             int max_prn = (ctrl->signal_mode == SIG_MODE_GPS) ? 32 : 63;
@@ -422,7 +442,7 @@ bool control_logic_handle_slider_drag(int slider_id, int x, int win_width, int w
     case CTRL_SLIDER_GAIN: r = lo.gain_slider; break;
     case CTRL_SLIDER_FS: r = lo.fs_slider; break;
     case CTRL_SLIDER_CN0: r = lo.cn0_slider; break;
-    case CTRL_SLIDER_SEED: return false;
+    case CTRL_SLIDER_SEED: r = lo.seed_slider; break;
     case CTRL_SLIDER_PRN: r = lo.prn_slider; break;
     case CTRL_SLIDER_PATH_V: r = lo.path_v_slider; break;
     case CTRL_SLIDER_PATH_A: r = lo.path_a_slider; break;
@@ -461,7 +481,12 @@ bool control_logic_handle_slider_drag(int slider_id, int x, int win_width, int w
         if (std::fabs(ctrl->target_cn0 - v) > 1e-9) { ctrl->target_cn0 = v; changed = true; } break;
     }
     case CTRL_SLIDER_SEED: {
-        if (ctrl->seed != 1U) { ctrl->seed = 1U; changed = true; }
+        double h = clamp_altitude_m(-100.0 + (5000.0 + 100.0) * t);
+        if (std::fabs(ctrl->selected_h_m - h) > 1e-9) {
+            ctrl->selected_h_m = h;
+            map_gui_set_selected_altitude(ctrl->selected_h_m);
+            changed = true;
+        }
         break;
     }
     case CTRL_SLIDER_PRN: {

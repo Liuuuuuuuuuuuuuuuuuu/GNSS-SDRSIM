@@ -296,5 +296,75 @@ void map_draw_satellite_layer(QPainter &p, const QRect &map_rect,
                         has_visible, has_standby, has_running,
                         show_gps_row, show_bds_row);
 
+  // Active satellite list panel (top-left of map)
+  {
+    std::vector<int> active_bds, active_gps;
+    for (const auto &sat : sats) {
+      bool is_active = (sat.prn >= 1 && sat.prn < active_prn_mask_len &&
+                        active_prn_mask && active_prn_mask[sat.prn] != 0);
+      if (!is_active) continue;
+      if (sat.is_gps)
+        active_gps.push_back(sat.prn);
+      else
+        active_bds.push_back(sat.prn);
+    }
+
+    // Only draw panel if there are active sats
+    if (!active_bds.empty() || !active_gps.empty()) {
+      p.setFont(gui_font_ui(language));
+      QFont list_font = p.font();
+      if (list_font.pointSize() > 0)
+        list_font.setPointSize(std::max(8, list_font.pointSize() - 1));
+      list_font.setBold(false);
+      p.setFont(list_font);
+      QFontMetrics lfm(list_font);
+
+      // Build display strings
+      QString bds_line, gps_line;
+      if (!active_bds.empty()) {
+        bds_line = "BDS: ";
+        for (int prn : active_bds) {
+          char buf[8]; std::snprintf(buf, sizeof(buf), "C%02d ", prn);
+          bds_line += buf;
+        }
+        bds_line = bds_line.trimmed();
+      }
+      if (!active_gps.empty()) {
+        gps_line = "GPS: ";
+        for (int prn : active_gps) {
+          char buf[8]; std::snprintf(buf, sizeof(buf), "G%02d ", prn);
+          gps_line += buf;
+        }
+        gps_line = gps_line.trimmed();
+      }
+
+      const int pad_x = 10, pad_y = 8, line_gap = 4;
+      const int row_h = std::max(16, lfm.height());
+      int rows = (!bds_line.isEmpty() ? 1 : 0) + (!gps_line.isEmpty() ? 1 : 0);
+      int text_w = 0;
+      if (!bds_line.isEmpty()) text_w = std::max(text_w, lfm.horizontalAdvance(bds_line));
+      if (!gps_line.isEmpty()) text_w = std::max(text_w, lfm.horizontalAdvance(gps_line));
+      const int panel_w = pad_x * 2 + text_w;
+      const int panel_h = pad_y * 2 + row_h * rows + line_gap * (rows - 1);
+      const QRect panel_rect(map_rect.x() + 10, map_rect.y() + 10, panel_w, panel_h);
+
+      p.setRenderHint(QPainter::Antialiasing, true);
+      p.setPen(QPen(QColor(120, 145, 172, 180), 1.0));
+      p.setBrush(QColor(10, 20, 35, 196));
+      p.drawRoundedRect(panel_rect, 6, 6);
+
+      int row_idx = 0;
+      auto draw_row = [&](const QString &text, const QColor &col) {
+        int ry = panel_rect.y() + pad_y + row_idx * (row_h + line_gap);
+        p.setPen(col);
+        p.drawText(QRect(panel_rect.x() + pad_x, ry, text_w, row_h),
+                   Qt::AlignLeft | Qt::AlignVCenter, text);
+        ++row_idx;
+      };
+      if (!bds_line.isEmpty()) draw_row(bds_line, color_bds_sys);
+      if (!gps_line.isEmpty()) draw_row(gps_line, color_gps_sys);
+    }
+  }
+
   p.restore();
 }

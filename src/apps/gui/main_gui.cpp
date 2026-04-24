@@ -35,15 +35,19 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
 #include <QCloseEvent>
+#include <QConicalGradient>
 #include <QColorDialog>
 #include <QCursor>
 #include <QDialog>
 #include <QDialogButtonBox>
 #include <QFont>
 #include <QFormLayout>
+#include <QGroupBox>
 #include <QHBoxLayout>
 #include <QImage>
+#include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -60,12 +64,16 @@
 #include <QPaintEvent>
 #include <QPainter>
 #include <QPen>
+#include <QProcess>
 #include <QPushButton>
 #include <QRect>
 #include <QScreen>
+#include <QSignalBlocker>
+#include <QScrollArea>
 #include <QShortcut>
 #include <QSlider>
 #include <QSpinBox>
+#include <QTabWidget>
 #include <QThread>
 #include <QTimer>
 #include <QWheelEvent>
@@ -104,6 +112,176 @@ extern "C" {
 
 namespace {
 
+static double compute_dynamic_segment_cap_m(double vmax_mps);
+
+struct ControlElementAppearanceOverride {
+  bool enabled = false;
+  double master_scale = -1.0;
+  double caption_scale = -1.0;
+  double switch_scale = -1.0;
+  double value_scale = -1.0;
+  QColor accent_color;
+  QColor border_color;
+  QColor text_color;
+  QColor dim_text_color;
+};
+
+static void apply_element_appearance_override(
+    MapControlPanelInput *in, const ControlElementAppearanceOverride &ov) {
+  if (!in || !ov.enabled) {
+    return;
+  }
+  if (ov.master_scale > 0.0)
+    in->control_text_scale = ov.master_scale;
+  if (ov.caption_scale > 0.0)
+    in->caption_text_scale = ov.caption_scale;
+  if (ov.switch_scale > 0.0)
+    in->switch_option_text_scale = ov.switch_scale;
+  if (ov.value_scale > 0.0)
+    in->value_text_scale = ov.value_scale;
+  if (ov.accent_color.isValid())
+    in->accent_color = ov.accent_color;
+  if (ov.border_color.isValid())
+    in->border_color = ov.border_color;
+  if (ov.text_color.isValid())
+    in->text_color = ov.text_color;
+  if (ov.dim_text_color.isValid())
+    in->dim_text_color = ov.dim_text_color;
+}
+
+class ControlPagePreviewWidget final : public QWidget {
+public:
+  explicit ControlPagePreviewWidget(QWidget *parent = nullptr) : QWidget(parent) {
+    setMinimumSize(980, 520);
+    setMouseTracking(true);
+  }
+
+  std::function<MapControlPanelInput()> build_input;
+  std::function<const ControlElementAppearanceOverride *()>
+      build_element_appearance_overrides;
+  std::function<void(ControlLayoutElementId)> on_select;
+  ControlLayoutElementId selected_element = CTRL_LAYOUT_ELEMENT_NONE;
+
+  QSize sizeHint() const override { return QSize(980, 520); }
+
+  int layout_width() const { return std::max(1, width() * 2); }
+  int layout_height() const { return std::max(1, height() * 2); }
+
+  QRect map_layout_rect_to_widget(const Rect &r) const {
+    return QRect(r.x - width(), r.y - height(), r.w, r.h);
+  }
+
+  QPoint map_widget_pos_to_layout(const QPoint &pt) const {
+    return QPoint(pt.x() + width(), pt.y() + height());
+  }
+
+protected:
+  void paintEvent(QPaintEvent *event) override {
+    QWidget::paintEvent(event);
+    QPainter painter(this);
+    painter.setRenderHint(QPainter::Antialiasing, true);
+    painter.fillRect(rect(), QColor("#040b14"));
+    if (!build_input) {
+      return;
+    }
+
+    const MapControlPanelInput in = build_input();
+    painter.save();
+    // Render using a virtual 2x canvas then translate so control panel fills preview.
+    painter.translate(-width(), -height());
+    map_draw_control_panel(painter, layout_width(), layout_height(), in);
+    painter.restore();
+
+    const ControlElementAppearanceOverride *element_overrides =
+        build_element_appearance_overrides ? build_element_appearance_overrides()
+                                           : nullptr;
+    if (element_overrides) {
+      ControlLayout lo;
+      compute_control_layout(layout_width(), layout_height(), &lo,
+                             in.ctrl.show_detailed_ctrl,
+                             in.ctrl.signal_mode != SIG_MODE_MIXED,
+                             in.layout_overrides);
+      for (int i = 0; i < CTRL_LAYOUT_ELEMENT_COUNT; ++i) {
+        const ControlElementAppearanceOverride &ov = element_overrides[i];
+        if (!ov.enabled) {
+          continue;
+        }
+        const Rect *rr =
+            control_layout_rect(&lo, (ControlLayoutElementId)i);
+        if (!rr || rr->w <= 0 || rr->h <= 0) {
+          continue;
+        }
+        MapControlPanelInput scoped_in = in;
+        apply_element_appearance_override(&scoped_in, ov);
+        painter.save();
+        painter.setClipRect(map_layout_rect_to_widget(*rr));
+        painter.translate(-width(), -height());
+        map_draw_control_panel(painter, layout_width(), layout_height(), scoped_in);
+        painter.restore();
+      }
+    }
+
+    if (selected_element == CTRL_LAYOUT_ELEMENT_NONE) {
+      return;
+    }
+
+    ControlLayout lo;
+    compute_control_layout(layout_width(), layout_height(), &lo, in.ctrl.show_detailed_ctrl,
+                           in.ctrl.signal_mode != SIG_MODE_MIXED,
+                           in.layout_overrides);
+    const Rect *selected_rect = control_layout_rect(&lo, selected_element);
+    if (!selected_rect || selected_rect->w <= 0 || selected_rect->h <= 0) {
+      return;
+    }
+  const QRect qr = map_layout_rect_to_widget(*selected_rect);
+    painter.setPen(QPen(QColor("#ffe082"), 2.0, Qt::DashLine));
+    painter.setBrush(Qt::NoBrush);
+    painter.drawRoundedRect(qr.adjusted(-2, -2, 2, 2), 6, 6);
+
+    const QString label = QString::fromUtf8(
+        control_layout_element_debug_name(selected_element));
+    QFont label_font = painter.font();
+    label_font.setPointSize(std::max(9, label_font.pointSize()));
+    label_font.setBold(true);
+    painter.setFont(label_font);
+    QFontMetrics fm(label_font);
+    const int label_w = fm.horizontalAdvance(label) + 18;
+    const int label_h = fm.height() + 8;
+    int label_x = std::max(8, std::min(qr.x(), width() - label_w - 8));
+    int label_y = qr.y() - label_h - 6;
+    if (label_y < 8) {
+      label_y = qr.y() + 6;
+    }
+    QRect label_rect(label_x, label_y, label_w, label_h);
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(18, 28, 44, 220));
+    painter.drawRoundedRect(label_rect, 6, 6);
+    painter.setPen(QColor("#ffe082"));
+    painter.drawText(label_rect, Qt::AlignCenter, label);
+  }
+
+  void mousePressEvent(QMouseEvent *event) override {
+    if (event->button() == Qt::LeftButton && build_input) {
+      const MapControlPanelInput in = build_input();
+      ControlLayout lo;
+      compute_control_layout(layout_width(), layout_height(), &lo,
+                             in.ctrl.show_detailed_ctrl,
+                             in.ctrl.signal_mode != SIG_MODE_MIXED,
+                             in.layout_overrides);
+      const QPoint layout_pt = map_widget_pos_to_layout(event->pos());
+      selected_element =
+          control_layout_hit_test(lo, layout_pt.x(), layout_pt.y());
+      if (on_select) {
+        on_select(selected_element);
+      }
+      update();
+      event->accept();
+      return;
+    }
+    QWidget::mousePressEvent(event);
+  }
+};
+
 static bool has_loaded_navigation_data() {
   for (int prn = 0; prn < MAX_SAT; ++prn) {
     if (eph[prn].prn != 0) {
@@ -118,7 +296,9 @@ static bool has_loaded_navigation_data() {
   return false;
 }
 
+#define MAIN_GUI_STATE_INL_CONTEXT 1
 #include "main_gui_state.inl"
+#undef MAIN_GUI_STATE_INL_CONTEXT
 
 class MapWidget final : public QWidget {
 public:
@@ -169,6 +349,12 @@ public:
     wf_.height = 0;
     stat_text_ = "Satellites: 0";
 
+    // Prewarm adaptive path-cap profile at GUI startup so later checks are immediate.
+    {
+      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
+      (void)compute_dynamic_segment_cap_m(g_ctrl.path_vmax_kmh / 3.6);
+    }
+
     auto now = std::chrono::steady_clock::now();
     next_time_tick_ = now;
     next_scene_tick_ = now;
@@ -181,6 +367,16 @@ public:
     timer_->setTimerType(Qt::PreciseTimer);
     connect(timer_, &QTimer::timeout, this, [this]() { this->onTick(); });
     refresh_tick_timer();
+
+    control_gear_click_timer_ = new QTimer(this);
+    control_gear_click_timer_->setSingleShot(true);
+    connect(control_gear_click_timer_, &QTimer::timeout, this, [this]() {
+      if (control_gear_tap_count_ > 0 && control_gear_tap_count_ < 6) {
+        open_control_style_dialog();
+      }
+      control_gear_tap_count_ = 0;
+      control_gear_tap_last_tp_ = std::chrono::steady_clock::time_point{};
+    });
 
     tile_net_ = new QNetworkAccessManager(this);
     connect(tile_net_, &QNetworkAccessManager::finished, this,
@@ -505,6 +701,65 @@ public:
     update(osm_panel_rect_);
   }
 
+  void set_selected_altitude_public(double h_m) {
+    if (QThread::currentThread() != this->thread()) {
+      QMetaObject::invokeMethod(
+          this,
+          [this, h_m]() { this->set_selected_altitude_public(h_m); },
+          Qt::QueuedConnection);
+      return;
+    }
+    if (!has_selected_llh_) {
+      return;
+    }
+
+    selected_h_m_ = h_m;
+    {
+      std::lock_guard<std::mutex> lk(g_llh_pick_mtx);
+      g_llh_pick_lat_deg = selected_lat_deg_;
+      g_llh_pick_lon_deg = selected_lon_deg_;
+      g_llh_pick_h_m = selected_h_m_;
+    }
+    g_gui_llh_pick_req.fetch_add(1);
+    update(osm_panel_rect_);
+  }
+
+  void reset_interaction_state_public() {
+    if (QThread::currentThread() != this->thread()) {
+      QMetaObject::invokeMethod(
+          this,
+          [this]() { this->reset_interaction_state_public(); },
+          Qt::QueuedConnection);
+      return;
+    }
+
+    has_selected_llh_ = false;
+    selected_lat_deg_ = 0.0;
+    selected_lon_deg_ = 0.0;
+    selected_h_m_ = 0.0;
+    has_preview_segment_ = false;
+    preview_mode_ = PATH_MODE_PLAN;
+    preview_start_lat_deg_ = 0.0;
+    preview_start_lon_deg_ = 0.0;
+    preview_end_lat_deg_ = 0.0;
+    preview_end_lon_deg_ = 0.0;
+    preview_polyline_.clear();
+    preview_route_key_.clear();
+    plan_status_.clear();
+    route_prefetch_pending_.clear();
+    route_prefetch_cache_.clear();
+    route_prefetch_order_.clear();
+    show_search_return_ = false;
+
+    scale_ruler_enabled_ = false;
+    scale_ruler_has_start_ = false;
+    scale_ruler_has_end_ = false;
+    scale_ruler_end_fixed_ = false;
+
+    update(osm_panel_rect_);
+    update(right_bottom_region());
+  }
+
 protected:
   void paintEvent(QPaintEvent *event) override;
 
@@ -707,6 +962,8 @@ private:
   void draw_map_panel(QPainter &p, const QRect &map_rect);
 
   void draw_control_panel(QPainter &p, int win_width, int win_height);
+  bool request_crossbow_unlock_with_sudo_prompt();
+  void on_control_gear_click();
   void open_control_style_dialog();
   void update_waterfall_image();
   void draw_spectrum_panel(QPainter &p, int win_width, int win_height);
@@ -736,6 +993,7 @@ private:
   std::unordered_map<QString, std::vector<LonLat>> route_prefetch_cache_;
   std::set<QString> route_prefetch_pending_;
   std::vector<QString> route_prefetch_order_;
+  QTimer *control_gear_click_timer_ = nullptr;
   QLineEdit *inline_editor_ = nullptr;
   int inline_edit_field_ = -1;
   QRect osm_panel_rect_;
@@ -779,7 +1037,7 @@ private:
   // 輔助函式：通知 DJI NFZ 模組地圖視角改變了
   bool is_jam_map_locked() const {
     std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-    return g_ctrl.interference_selection == 1;
+    return g_ctrl.interference_selection == 1 && g_ctrl.running_ui;
   }
 
   bool is_map_center_locked() const {
@@ -819,9 +1077,15 @@ private:
   QColor control_border_color_ = QColor("#b9cadf");
   QColor control_text_color_ = QColor("#f8fbff");
   QColor control_dim_text_color_ = QColor("#6b7b90");
+  ControlElementAppearanceOverride
+      control_element_appearance_overrides_[CTRL_LAYOUT_ELEMENT_COUNT]{};
+  ControlLayoutOverrides control_layout_overrides_{};
+  ControlSliderPartOverrides control_slider_part_overrides_{};
   QRect dark_mode_btn_rect_;
   QRect lang_btn_rect_;
   QRect control_gear_btn_rect_;
+  int control_gear_tap_count_ = 0;
+  std::chrono::steady_clock::time_point control_gear_tap_last_tp_{};
   bool font_times_bold_ = true;
   bool font_times_italic_ = true;
   bool font_times_bold_italic_ = true;
@@ -848,16 +1112,26 @@ private:
   QRect osm_stop_btn_rect_;
   QRect osm_launch_btn_rect_;
   QRect crossbow_stage_launch_btn_rect_;
-  struct CrossbowWhitelistHit {
+  struct CrossbowStageRowHit {
     QRect btn_rect;
-    QString device_id;
+    QString action_key;
+    int action_kind = 0;
     bool currently_whitelisted = false;
   };
-  std::vector<CrossbowWhitelistHit> crossbow_whitelist_hit_rows_;
+  std::vector<CrossbowStageRowHit> crossbow_whitelist_hit_rows_;
   QRect crossbow_whitelist_clear_btn_rect_;
+  QRect crossbow_whitelist_unsync_btn_rect_;
+  QRect crossbow_wifi_allow_apply_btn_rect_;
+  QRect crossbow_blacklist_clear_btn_rect_;
+  QRect crossbow_tab_original_rect_;
+  QRect crossbow_tab_whitelist_rect_;
+  QRect crossbow_tab_blacklist_rect_;
+  QRect crossbow_tab_bridge_rect_;
+  QRect crossbow_bridge_mode_checkbox_rect_;
   QRect crossbow_sort_btn_rect_;
   QRect crossbow_page_prev_btn_rect_;
   QRect crossbow_page_next_btn_rect_;
+  int crossbow_view_mode_ = 0; /* 0=original, 1=whitelist, 2=blacklist, 3=bridge */
   int crossbow_stage_sort_mode_ = 0; /* 0=distance, 1=threat, 2=latest */
   int crossbow_stage_page_ = 0;
   int crossbow_stage_total_pages_ = 1;
@@ -1061,16 +1335,30 @@ public:
   friend class MapWidgetInitMethods;
 };
 
+#define MAP_WIDGET_UI_METHODS_INL_CONTEXT 1
 #include "gui/core/widget/map_widget_ui_methods.inl"
+#undef MAP_WIDGET_UI_METHODS_INL_CONTEXT
+#define MAP_WIDGET_TUTORIAL_METHODS_INL_CONTEXT 1
 #include "gui/tutorial/widget/map_widget_tutorial_methods.inl"
+#undef MAP_WIDGET_TUTORIAL_METHODS_INL_CONTEXT
+#define MAP_WIDGET_CONTROL_METHODS_INL_CONTEXT 1
 #include "gui/control/widget/map_widget_control_methods.inl"
+#undef MAP_WIDGET_CONTROL_METHODS_INL_CONTEXT
 
+#define MAIN_GUI_RENDER_EVENT_METHODS_INL_CONTEXT 1
 #include "main_gui_render_event_methods.inl"
+#undef MAIN_GUI_RENDER_EVENT_METHODS_INL_CONTEXT
+#define MAIN_GUI_INPUT_EVENT_METHODS_INL_CONTEXT 1
 #include "main_gui_input_event_methods.inl"
+#undef MAIN_GUI_INPUT_EVENT_METHODS_INL_CONTEXT
 
+#define MAPWIDGET_PATH_METHODS_INL_CONTEXT 1
 #include "main_gui_path_methods.inl"
+#undef MAPWIDGET_PATH_METHODS_INL_CONTEXT
 
+#define MAIN_GUI_WIDGET_METHODS_INL_CONTEXT 1
 #include "main_gui_widget_methods.inl"
+#undef MAIN_GUI_WIDGET_METHODS_INL_CONTEXT
 
 static void gui_thread_main() {
   int argc = 1;
@@ -1126,4 +1414,6 @@ static void gui_thread_main() {
 
 } // namespace
 
+#define MAIN_GUI_C_API_INL_CONTEXT 1
 #include "main_gui_c_api.inl"
+#undef MAIN_GUI_C_API_INL_CONTEXT

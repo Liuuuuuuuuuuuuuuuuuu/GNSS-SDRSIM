@@ -10,14 +10,24 @@ set -euo pipefail
 detect_iface() {
   local n dev_path modalias
 
-  # Prefer ALFA AWUS046NH chipset (RTL8187, USB VID:PID 0bda:8187)
+  # Prefer interfaces already in monitor mode.
+  if command -v iw >/dev/null 2>&1; then
+    local monitor_iface
+    monitor_iface="$(iw dev 2>/dev/null | awk '/Interface/ {i=$2} /type monitor/ {print i; exit}')"
+    if [[ -n "$monitor_iface" ]]; then
+      echo "$monitor_iface"
+      return 0
+    fi
+  fi
+
+  # Prefer external USB sniffing chipsets: RTL8187 and RT3070/2870 family.
   for n in /sys/class/net/*; do
     n="$(basename "$n")"
     [[ "$n" == "lo" ]] && continue
     dev_path="/sys/class/net/${n}/device/modalias"
     if [[ -f "$dev_path" ]]; then
       modalias="$(cat "$dev_path" 2>/dev/null || true)"
-      if [[ "$modalias" == *"v0BDAp8187"* ]]; then
+      if [[ "$modalias" == *"v0BDAp8187"* || "$modalias" == *"v148Fp3070"* || "$modalias" == *"v148Fp2870"* ]]; then
         echo "$n"
         return 0
       fi

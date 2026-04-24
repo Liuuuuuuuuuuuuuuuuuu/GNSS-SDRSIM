@@ -8,6 +8,11 @@ OBJ_DIR ?= build
 CUDA_OBJ_DIR ?= $(OBJ_DIR)/cuda
 JOBS ?= $(shell nproc)
 
+# Default to 8-way parallel builds unless user already passed -j/--jobs.
+ifeq ($(filter -j% --jobs=%,$(MAKEFLAGS)),)
+MAKEFLAGS += -j8
+endif
+
 ifneq ($(strip $(CCACHE)),)
 CC := $(CCACHE) gcc
 CXX := $(CCACHE) g++
@@ -27,8 +32,8 @@ endif
 GUI_SRC_DIRS := $(shell find gui -type d)
 INCLUDE_DIRS := $(shell find include -type d 2>/dev/null)
 GUI_CPP_SRCS := $(shell find gui -type f -name '*.cpp')
-COMMON_SRCS = main.c src/core/globals.c src/core/bch.c src/nav/navbits.c src/core/channel.c src/nav/rinex.c src/nav/orbits.c src/geo/coord.c src/geo/path.c src/nav/iono.c src/runtime/gnss_rx.c \
-			 src/runtime/usrp_wrapper.cpp src/runtime/rid_rx.cpp src/runtime/wifi_rid_rx.c main_gui.cpp cuda/cuda_runtime_info.c $(GUI_CPP_SRCS)
+COMMON_SRCS = src/apps/cli/main.c src/core/globals.c src/core/bch.c src/nav/navbits.c src/core/channel.c src/nav/rinex.c src/nav/orbits.c src/geo/coord.c src/geo/path.c src/nav/iono.c src/runtime/gnss_rx.c \
+			 src/runtime/usrp_wrapper.cpp src/runtime/rid_rx.cpp src/runtime/wifi_rid_rx.c src/runtime/ble_rid_rx.c src/apps/gui/main_gui.cpp cuda/cuda_runtime_info.c $(GUI_CPP_SRCS)
 COMMON_OBJS = $(addprefix $(OBJ_DIR)/,$(COMMON_SRCS))
 COMMON_OBJS := $(COMMON_OBJS:.c=.o)
 COMMON_OBJS := $(COMMON_OBJS:.cpp=.o)
@@ -61,7 +66,10 @@ GENCODE_ALL = $(strip \
 GENCODE_FAT = $(strip $(GENCODE_ALL) $(PTX_FALLBACK))
 CUDA_MULTI_OBJ = $(CUDA_OBJ_DIR)/bdssim_multi.o
 FAT_BIN = $(BIN_DIR)/bds-sim-fat
-LAUNCHER_TEMPLATE = bds-sim-launcher.sh
+WIFI_RID_BRIDGE = $(BIN_DIR)/wifi-rid-bridge
+WIFI_RID_TSHARK_BRIDGE = $(BIN_DIR)/wifi-rid-tshark-bridge
+BLE_RID_BRIDGE  = $(BIN_DIR)/ble-rid-bridge
+LAUNCHER_TEMPLATE = scripts/launcher/bds-sim-launcher.sh
 REBUILD_SCRIPT = scripts/build/rebuild-local.sh
 SUPPORT_CHECK_SCRIPT = scripts/build/check-gpu-series-support.sh
 
@@ -91,7 +99,7 @@ endif
 
 SUPPORTED_GPU_BINS = $(addprefix $(BIN_DIR)/,$(SUPPORTED_GPU_BIN_NAMES))
 
-all: bds-sim
+all: bds-sim $(WIFI_RID_BRIDGE) $(WIFI_RID_TSHARK_BRIDGE) $(BLE_RID_BRIDGE)
 
 release:
 	@$(MAKE) -j$(JOBS) all
@@ -176,7 +184,7 @@ $(OBJ_DIR)/%.o: %.c
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c $< -o $@
 
-$(CUDA_MULTI_OBJ): bdssim.cu
+$(CUDA_MULTI_OBJ): src/compute/cuda/bdssim.cu
 	@mkdir -p $(dir $@)
 	@if [ -z "$(GENCODE_FAT)" ]; then echo "[make] no usable gencode (SASS/PTX) found in current NVCC ($(NVCC))."; exit 2; fi
 	$(NVCC) $(NVCCFLAGS_BASE) $(GENCODE_FAT) -c $< -o $@
@@ -215,6 +223,15 @@ $(BIN_DIR)/bds-sim-blackwell: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 
 $(BIN_DIR)/bds-sim-modern: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
+
+$(WIFI_RID_BRIDGE): src/bridges/wifi/wifi_rid_bridge.cpp | $(BIN_DIR)
+	$(CXX) -O2 -Wall -Wextra -std=c++14 -o $@ $<
+
+$(WIFI_RID_TSHARK_BRIDGE): src/bridges/wifi/wifi_rid_tshark_bridge.cpp | $(BIN_DIR)
+	$(CXX) -O2 -Wall -Wextra -std=c++14 -o $@ $<
+
+$(BLE_RID_BRIDGE): src/bridges/ble/ble_rid_bridge.cpp | $(BIN_DIR)
+	$(CXX) -O2 -Wall -Wextra -std=c++14 -o $@ $< -lbluetooth
 
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)

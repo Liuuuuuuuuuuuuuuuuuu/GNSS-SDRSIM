@@ -98,10 +98,19 @@ static inline double orbit_gain_amp(int prn)
     return pow(10.0, dB/20.0);
 }
 
-/* --------------------------- 指數平滑振幅，避免 AM 旁帶 ------------------------------*/
+/* --------------------------- 指數平滑振幅，避免 AM 旁帶 (動態門檛版本) --------------------------*/
 static inline double smooth_amp(double A_prev, double A_new, double dt_ms)
 {
-    double alpha = 1.0 - exp(-dt_ms / AMP_SMOOTH_TC_MS);
+    /* 保護：如果新值趨近於 0，可能是丟包或無效資料，保持前值（不零延遲更新）*/
+    if (A_new < 1e-9)
+        return A_prev;
+    
+    /* 突變偵測：如果新舊振幅差異超過 30%，視為衛星被遮蔽/出現，直接更新（零延遲）*/
+    if (A_prev > 1e-6 && fabs(A_new - A_prev) / A_prev > 0.30)
+        return A_new;
+    
+    /* 正常狀態：使用較短的時間常數（300ms 而非 1000ms）進行平滑*/
+    double alpha = 1.0 - exp(-dt_ms / 300.0);
     if (A_prev == 0.0)
         return A_new;                  /* avoid long ramp at start */
     return A_prev + alpha * (A_new - A_prev);

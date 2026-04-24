@@ -15,6 +15,18 @@ static inline int clamp_int(int v, int lo, int hi) {
     return v;
 }
 
+static inline bool rect_visible(const Rect &r) {
+    return r.w > 0 && r.h > 0;
+}
+
+static void apply_rect_adjustment(Rect *r, const ControlRectAdjustment &adj) {
+    if (!r || !rect_visible(*r)) return;
+    r->x += adj.dx;
+    r->y += adj.dy;
+    r->w = std::max(18, r->w + adj.dw);
+    r->h = std::max(12, r->h + adj.dh);
+}
+
 enum class ControlTemplateKind {
     Landscape,
     Portrait,
@@ -76,8 +88,131 @@ Rect slider_value_rect(const Rect &r) {
     }
 }
 
+Rect *control_layout_mutable_rect(ControlLayout *lo, ControlLayoutElementId id) {
+    if (!lo) return nullptr;
+    switch (id) {
+    case CTRL_LAYOUT_ELEMENT_HEADER_GEAR: return &lo->header_gear;
+    case CTRL_LAYOUT_ELEMENT_HEADER_TITLE: return &lo->header_title;
+    case CTRL_LAYOUT_ELEMENT_HEADER_UTC: return &lo->header_utc;
+    case CTRL_LAYOUT_ELEMENT_HEADER_BDT: return &lo->header_bdt;
+    case CTRL_LAYOUT_ELEMENT_HEADER_GPST: return &lo->header_gpst;
+    case CTRL_LAYOUT_ELEMENT_DETAIL_SATS: return &lo->detail_sats;
+    case CTRL_LAYOUT_ELEMENT_BTN_TAB_SIMPLE: return &lo->btn_tab_simple;
+    case CTRL_LAYOUT_ELEMENT_BTN_TAB_DETAIL: return &lo->btn_tab_detail;
+    case CTRL_LAYOUT_ELEMENT_TX_SLIDER: return &lo->tx_slider;
+    case CTRL_LAYOUT_ELEMENT_GAIN_SLIDER: return &lo->gain_slider;
+    case CTRL_LAYOUT_ELEMENT_FS_SLIDER: return &lo->fs_slider;
+    case CTRL_LAYOUT_ELEMENT_CN0_SLIDER: return &lo->cn0_slider;
+    case CTRL_LAYOUT_ELEMENT_HEIGHT_SLIDER: return &lo->seed_slider;
+    case CTRL_LAYOUT_ELEMENT_PRN_SLIDER: return &lo->prn_slider;
+    case CTRL_LAYOUT_ELEMENT_PATH_V_SLIDER: return &lo->path_v_slider;
+    case CTRL_LAYOUT_ELEMENT_PATH_A_SLIDER: return &lo->path_a_slider;
+    case CTRL_LAYOUT_ELEMENT_CH_SLIDER: return &lo->ch_slider;
+    case CTRL_LAYOUT_ELEMENT_SW_MODE: return &lo->sw_mode;
+    case CTRL_LAYOUT_ELEMENT_SW_SYS: return &lo->sw_sys;
+    case CTRL_LAYOUT_ELEMENT_TG_MEO: return &lo->tg_meo;
+    case CTRL_LAYOUT_ELEMENT_TG_IONO: return &lo->tg_iono;
+    case CTRL_LAYOUT_ELEMENT_TG_CLK: return &lo->tg_clk;
+    case CTRL_LAYOUT_ELEMENT_SW_FMT: return &lo->sw_fmt;
+    case CTRL_LAYOUT_ELEMENT_SW_JAM: return &lo->sw_jam;
+    case CTRL_LAYOUT_ELEMENT_BTN_START: return &lo->btn_start;
+    case CTRL_LAYOUT_ELEMENT_BTN_STOP: return &lo->btn_stop;
+    case CTRL_LAYOUT_ELEMENT_BTN_RETURN: return &lo->btn_return;
+    case CTRL_LAYOUT_ELEMENT_BTN_EXIT: return &lo->btn_exit;
+    default: return nullptr;
+    }
+}
+
+const Rect *control_layout_rect(const ControlLayout *lo, ControlLayoutElementId id) {
+    return control_layout_mutable_rect(const_cast<ControlLayout *>(lo), id);
+}
+
+const char *control_layout_element_debug_name(ControlLayoutElementId id) {
+    switch (id) {
+    case CTRL_LAYOUT_ELEMENT_HEADER_GEAR: return "Gear";
+    case CTRL_LAYOUT_ELEMENT_HEADER_TITLE: return "Title";
+    case CTRL_LAYOUT_ELEMENT_HEADER_UTC: return "UTC";
+    case CTRL_LAYOUT_ELEMENT_HEADER_BDT: return "BDT Row";
+    case CTRL_LAYOUT_ELEMENT_HEADER_GPST: return "GPST Row";
+    case CTRL_LAYOUT_ELEMENT_DETAIL_SATS: return "Sat Summary";
+    case CTRL_LAYOUT_ELEMENT_BTN_TAB_SIMPLE: return "Simple Tab";
+    case CTRL_LAYOUT_ELEMENT_BTN_TAB_DETAIL: return "Detail Tab";
+    case CTRL_LAYOUT_ELEMENT_TX_SLIDER: return "TX Slider";
+    case CTRL_LAYOUT_ELEMENT_GAIN_SLIDER: return "Gain Slider";
+    case CTRL_LAYOUT_ELEMENT_FS_SLIDER: return "FS Slider";
+    case CTRL_LAYOUT_ELEMENT_CN0_SLIDER: return "CN0 Slider";
+    case CTRL_LAYOUT_ELEMENT_HEIGHT_SLIDER: return "Height Slider";
+    case CTRL_LAYOUT_ELEMENT_PRN_SLIDER: return "PRN Slider";
+    case CTRL_LAYOUT_ELEMENT_PATH_V_SLIDER: return "Path V Slider";
+    case CTRL_LAYOUT_ELEMENT_PATH_A_SLIDER: return "Path A Slider";
+    case CTRL_LAYOUT_ELEMENT_CH_SLIDER: return "Channel Slider";
+    case CTRL_LAYOUT_ELEMENT_SW_MODE: return "Mode Switch";
+    case CTRL_LAYOUT_ELEMENT_SW_SYS: return "System Switch";
+    case CTRL_LAYOUT_ELEMENT_TG_MEO: return "MEO Toggle";
+    case CTRL_LAYOUT_ELEMENT_TG_IONO: return "IONO Toggle";
+    case CTRL_LAYOUT_ELEMENT_TG_CLK: return "EXT Toggle";
+    case CTRL_LAYOUT_ELEMENT_SW_FMT: return "Format Switch";
+    case CTRL_LAYOUT_ELEMENT_SW_JAM: return "Interfere Switch";
+    case CTRL_LAYOUT_ELEMENT_BTN_START: return "Start Button";
+    case CTRL_LAYOUT_ELEMENT_BTN_STOP: return "Stop Button";
+    case CTRL_LAYOUT_ELEMENT_BTN_RETURN: return "Return Button";
+    case CTRL_LAYOUT_ELEMENT_BTN_EXIT: return "Exit Button";
+    default: return "None";
+    }
+}
+
+ControlLayoutElementId control_layout_hit_test(const ControlLayout &lo, int x, int y) {
+    static const ControlLayoutElementId kHitOrder[] = {
+        CTRL_LAYOUT_ELEMENT_HEADER_GEAR,
+        CTRL_LAYOUT_ELEMENT_HEADER_TITLE,
+        CTRL_LAYOUT_ELEMENT_HEADER_UTC,
+        CTRL_LAYOUT_ELEMENT_HEADER_BDT,
+        CTRL_LAYOUT_ELEMENT_HEADER_GPST,
+        CTRL_LAYOUT_ELEMENT_DETAIL_SATS,
+        CTRL_LAYOUT_ELEMENT_BTN_TAB_SIMPLE,
+        CTRL_LAYOUT_ELEMENT_BTN_TAB_DETAIL,
+        CTRL_LAYOUT_ELEMENT_TX_SLIDER,
+        CTRL_LAYOUT_ELEMENT_GAIN_SLIDER,
+        CTRL_LAYOUT_ELEMENT_FS_SLIDER,
+        CTRL_LAYOUT_ELEMENT_CN0_SLIDER,
+        CTRL_LAYOUT_ELEMENT_HEIGHT_SLIDER,
+        CTRL_LAYOUT_ELEMENT_PRN_SLIDER,
+        CTRL_LAYOUT_ELEMENT_PATH_V_SLIDER,
+        CTRL_LAYOUT_ELEMENT_PATH_A_SLIDER,
+        CTRL_LAYOUT_ELEMENT_CH_SLIDER,
+        CTRL_LAYOUT_ELEMENT_SW_MODE,
+        CTRL_LAYOUT_ELEMENT_SW_SYS,
+        CTRL_LAYOUT_ELEMENT_TG_MEO,
+        CTRL_LAYOUT_ELEMENT_TG_IONO,
+        CTRL_LAYOUT_ELEMENT_TG_CLK,
+        CTRL_LAYOUT_ELEMENT_SW_FMT,
+        CTRL_LAYOUT_ELEMENT_SW_JAM,
+        CTRL_LAYOUT_ELEMENT_BTN_START,
+        CTRL_LAYOUT_ELEMENT_BTN_STOP,
+        CTRL_LAYOUT_ELEMENT_BTN_RETURN,
+        CTRL_LAYOUT_ELEMENT_BTN_EXIT,
+    };
+    for (ControlLayoutElementId id : kHitOrder) {
+        const Rect *r = control_layout_rect(&lo, id);
+        if (r && rect_visible(*r) && rect_hit(*r, x, y)) {
+            return id;
+        }
+    }
+    return CTRL_LAYOUT_ELEMENT_NONE;
+}
+
+static void apply_control_layout_overrides(ControlLayout *lo,
+                                           const ControlLayoutOverrides *overrides) {
+    if (!lo || !overrides) return;
+    for (int i = 0; i < CTRL_LAYOUT_ELEMENT_COUNT; ++i) {
+        Rect *r = control_layout_mutable_rect(lo, (ControlLayoutElementId)i);
+        if (!r) continue;
+        apply_rect_adjustment(r, overrides->entries[i]);
+    }
+}
+
 void compute_control_layout(int win_width, int win_height, ControlLayout *lo, bool detailed,
-                            bool single_system_sat_layout) {
+                            bool single_system_sat_layout, const ControlLayoutOverrides *overrides) {
     std::memset(lo, 0, sizeof(*lo));
 
     lo->panel.x = win_width / 2;
@@ -214,8 +349,7 @@ void compute_control_layout(int win_width, int win_height, ControlLayout *lo, bo
     int full_w = content_w;
 
     if (detailed) {
-        // Detail 模式固定比例：SAT 15% / SIGNAL 15% / PATH 15% / PRN+MATCH 15%
-        // / FORMAT+MODE(+MEO/IONO/EXT) 35% / 底部保留 5%。
+        // Detail 模式固定比例：SAT / SIGNAL / PATH / HEIGHT+CH / SWITCH BLOCK。
         int detail_h_total = std::max(24, action_y - detail_base_y - gap);
         double sat_ratio = single_system_sat_layout ? 0.075 : 0.15;
         double signal_ratio = single_system_sat_layout ? 0.15 : 0.12;
@@ -248,23 +382,26 @@ void compute_control_layout(int win_width, int win_height, ControlLayout *lo, bo
         y_cursor += row_path_h;
 
         int row_prn_h = std::max(12, prn_h);
-        lo->prn_slider = {x_l, y_cursor, col_w, row_prn_h};
+        lo->seed_slider = {x_l, y_cursor, col_w, row_prn_h};
         lo->ch_slider = {x_r, y_cursor, std::max(24, full_w - col_w - col_gap), row_prn_h};
         y_cursor += row_prn_h;
 
         int block_h = std::max(16, sw_block_h);
         int inner_gap = clamp_int(block_h / 12, 1, 10);
         int sw_each_h = std::max(10, (block_h - inner_gap) / 2);
-        lo->sw_fmt = {x_l, y_cursor, col_w, sw_each_h};
-        lo->sw_mode = {x_l, y_cursor + sw_each_h + inner_gap, col_w, sw_each_h};
+        lo->sw_mode = {x_l, y_cursor, col_w, sw_each_h};
+        lo->sw_fmt = {x_l, y_cursor + sw_each_h + inner_gap, col_w, sw_each_h};
+
+        const int right_col_w = std::max(24, full_w - col_w - col_gap);
+        lo->prn_slider = {x_r, y_cursor + sw_each_h + inner_gap, right_col_w, sw_each_h};
 
         int cb_gap = clamp_int(col_w / 18, 4, 12);
         int cb_w = std::max(18, (col_w - 2 * cb_gap) / 3);
-        int cb_y = y_cursor + std::max(0, (block_h - sw_each_h) / 2);
+        int cb_y = y_cursor;
         lo->tg_meo  = {x_r, cb_y, cb_w, sw_each_h};
         lo->tg_iono = {x_r + cb_w + cb_gap, cb_y, cb_w, sw_each_h};
         lo->tg_clk  = {x_r + 2 * (cb_w + cb_gap), cb_y,
-                       std::max(18, std::max(24, full_w - col_w - col_gap) - 2 * (cb_w + cb_gap)), sw_each_h};
+                   std::max(18, right_col_w - 2 * (cb_w + cb_gap)), sw_each_h};
         y_cursor += block_h;
 
         // 關閉 Detail 不使用的 simple-only controls。
@@ -272,7 +409,6 @@ void compute_control_layout(int win_width, int win_height, ControlLayout *lo, bo
         lo->fs_slider = {0, 0, 0, 0};
         lo->tx_slider = {0, 0, 0, 0};
         lo->sw_jam = {0, 0, 0, 0};
-        lo->seed_slider = {0, 0, 0, 0};
 
         (void)reserve_h;
 
@@ -297,6 +433,8 @@ void compute_control_layout(int win_width, int win_height, ControlLayout *lo, bo
         y_cursor += fs_h + row_gap;
         lo->tx_slider = {x_l, y_cursor, full_w, tx_h};
     }
+
+    apply_control_layout_overrides(lo, overrides);
 }
 
 int control_slider_hit_test(int x, int y, int win_width, int win_height, bool detailed,
@@ -307,6 +445,7 @@ int control_slider_hit_test(int x, int y, int win_width, int win_height, bool de
     if (rect_hit(lo.gain_slider, x, y) && !rect_hit(slider_value_rect(lo.gain_slider), x, y)) return CTRL_SLIDER_GAIN;
     if (rect_hit(lo.fs_slider, x, y) && !rect_hit(slider_value_rect(lo.fs_slider), x, y)) return CTRL_SLIDER_FS;
     if (detailed && rect_hit(lo.cn0_slider, x, y) && !rect_hit(slider_value_rect(lo.cn0_slider), x, y)) return CTRL_SLIDER_CN0;
+    if (detailed && rect_hit(lo.seed_slider, x, y) && !rect_hit(slider_value_rect(lo.seed_slider), x, y)) return CTRL_SLIDER_SEED;
     if (detailed && rect_hit(lo.prn_slider, x, y) && !rect_hit(slider_value_rect(lo.prn_slider), x, y)) return CTRL_SLIDER_PRN;
     if (detailed && rect_hit(lo.path_v_slider, x, y) && !rect_hit(slider_value_rect(lo.path_v_slider), x, y)) return CTRL_SLIDER_PATH_V;
     if (detailed && rect_hit(lo.path_a_slider, x, y) && !rect_hit(slider_value_rect(lo.path_a_slider), x, y)) return CTRL_SLIDER_PATH_A;
@@ -322,6 +461,7 @@ int control_value_hit_test(int x, int y, int win_width, int win_height, bool det
     if (rect_hit(slider_value_rect(lo.gain_slider), x, y)) return CTRL_SLIDER_GAIN;
     if (rect_hit(slider_value_rect(lo.fs_slider), x, y)) return CTRL_SLIDER_FS;
     if (detailed && rect_hit(slider_value_rect(lo.cn0_slider), x, y)) return CTRL_SLIDER_CN0;
+    if (detailed && rect_hit(slider_value_rect(lo.seed_slider), x, y)) return CTRL_SLIDER_SEED;
     if (detailed && rect_hit(slider_value_rect(lo.prn_slider), x, y)) return CTRL_SLIDER_PRN;
     if (detailed && rect_hit(slider_value_rect(lo.path_v_slider), x, y)) return CTRL_SLIDER_PATH_V;
     if (detailed && rect_hit(slider_value_rect(lo.path_a_slider), x, y)) return CTRL_SLIDER_PATH_A;

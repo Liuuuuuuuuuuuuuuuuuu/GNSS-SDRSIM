@@ -3,10 +3,11 @@
 #include <algorithm>
 #include <cmath>
 
-// 縮小時的最小寬度比例（25% = 0.25）
-static const double MIN_WIDTH_RATIO = 0.25;
-// 展開時的最大寬度比例（70% = 0.70）
-static const double MAX_WIDTH_RATIO = 0.70;
+// 縮小時的最小寬度比例（42% = 0.42）
+// Avoid unreadable one-word-per-line wrapping in compact panel mode.
+static const double MIN_WIDTH_RATIO = 0.42;
+// 展開時的最大寬度比例（76% = 0.76）
+static const double MAX_WIDTH_RATIO = 0.76;
 
 void get_rb_lq_panel_rect(int win_width,
                           int win_height,

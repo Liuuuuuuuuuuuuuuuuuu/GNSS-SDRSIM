@@ -1,3 +1,7 @@
+#ifndef MAIN_GUI_C_API_INL_CONTEXT
+// This .inl requires MapWidget declarations from main_gui.cpp include context.
+// Parsed standalone by IDE diagnostics it emits false errors; leave this branch empty.
+#else
 extern "C" void start_map_gui(double start_bdt) {
   if (g_running.load())
     return;
@@ -58,6 +62,7 @@ extern "C" void map_gui_set_control_defaults(const sim_config_t *cfg) {
                            : (cfg->signal_gps ? SIG_MODE_GPS : SIG_MODE_BDS);
   g_ctrl.fs_mhz = snap_fs_to_mode_grid_hz(cfg->fs, g_ctrl.signal_mode) / 1e6;
   g_ctrl.target_cn0 = clamp_double(g_target_cn0, 20.0, 60.0);
+  g_ctrl.selected_h_m = cfg->llh[2];
   g_ctrl.max_ch = clamp_int(cfg->max_ch, 1, 16);
   g_ctrl.path_vmax_kmh = 72.0;
   g_ctrl.path_accel_mps2 = 2.0;
@@ -80,6 +85,7 @@ extern "C" void map_gui_set_control_defaults(const sim_config_t *cfg) {
   g_ctrl.running_ui = false;
   g_ctrl.llh_ready = false;
   g_ctrl.crossbow_auto_jam_enabled = false;
+  g_ctrl.crossbow_unlocked = false;
   g_ctrl.show_detailed_ctrl = false;
   auto _set_rnx = [](char *dst, std::size_t dsz, const char *path) {
     if (path && path[0]) {
@@ -146,6 +152,9 @@ extern "C" void map_gui_get_control_config(sim_config_t *cfg,
   cfg->iono_on = g_ctrl.iono_on;
   cfg->usrp_external_clk = g_ctrl.usrp_external_clk;
   int effective_selection = g_ctrl.interference_selection;
+  if (!g_ctrl.crossbow_unlocked && effective_selection == 2) {
+    effective_selection = 0;
+  }
   if (effective_selection == 2 && g_ctrl.crossbow_auto_jam_enabled) {
     effective_selection = 1;
   }
@@ -293,6 +302,13 @@ extern "C" void map_gui_set_selected_llh_centered(double lat_deg,
   w->set_selected_llh_centered_public(lat_deg, lon_deg, h_m);
 }
 
+extern "C" void map_gui_set_selected_altitude(double h_m) {
+  MapWidget *w = g_active_widget;
+  if (!w)
+    return;
+  w->set_selected_altitude_public(h_m);
+}
+
 extern "C" void map_gui_set_location_auto_zoom(double lat_deg, double lon_deg, double h_m) {
   MapWidget *w = g_active_widget;
   if (!w)
@@ -324,6 +340,50 @@ extern "C" int map_gui_consume_selected_llh(double *lat_deg, double *lon_deg,
   if (h_m)
     *h_m = g_llh_pick_h_m;
   return 1;
+}
+
+extern "C" int map_gui_consume_wifi_rid_allow_ids(char *csv, size_t csv_sz) {
+  uint32_t n = g_gui_wifi_rid_allow_apply_req.exchange(0);
+  if (n == 0) {
+    return 0;
+  }
+
+  std::lock_guard<std::mutex> lk(g_gui_wifi_rid_allow_mtx);
+  if (csv && csv_sz > 0) {
+    std::snprintf(csv, csv_sz, "%s", g_gui_wifi_rid_allow_csv.c_str());
+  }
+  return 1;
+}
+
+extern "C" int map_gui_consume_wifi_rid_block_ids(char *csv, size_t csv_sz) {
+  uint32_t n = g_gui_wifi_rid_block_apply_req.exchange(0);
+  if (n == 0) {
+    return 0;
+  }
+
+  std::lock_guard<std::mutex> lk(g_gui_wifi_rid_block_mtx);
+  if (csv && csv_sz > 0) {
+    std::snprintf(csv, csv_sz, "%s", g_gui_wifi_rid_block_csv.c_str());
+  }
+  return 1;
+}
+
+extern "C" int map_gui_consume_wifi_rid_mixed_mode(int *enabled) {
+  uint32_t n = g_gui_wifi_rid_mode_apply_req.exchange(0);
+  if (n == 0) {
+    return 0;
+  }
+
+  std::lock_guard<std::mutex> lk(g_gui_wifi_rid_mode_mtx);
+  if (enabled) {
+    *enabled = g_gui_wifi_rid_mode_mixed_enabled ? 1 : 0;
+  }
+  return 1;
+}
+
+extern "C" int map_gui_consume_crossbow_unlock_request(void) {
+  uint32_t n = g_gui_crossbow_unlock_req.exchange(0);
+  return n == 0 ? 0 : 1;
 }
 
 extern "C" int map_gui_consume_start_request(void) {
@@ -373,6 +433,13 @@ extern "C" void map_gui_clear_path_segments(void) {
   g_path_segments.clear();
 }
 
+extern "C" void map_gui_reset_interaction_state(void) {
+  MapWidget *w = g_active_widget;
+  if (!w)
+    return;
+  w->reset_interaction_state_public();
+}
+
 extern "C" void map_gui_pump_events(void) {
   QApplication *app = g_app;
   if (app)
@@ -417,3 +484,4 @@ extern "C" void map_gui_push_alert(int level, const char *message) {
     g_gui_alert_expire_tp = now + std::chrono::milliseconds(ttl_ms);
   }
 }
+#endif // MAIN_GUI_C_API_INL_CONTEXT

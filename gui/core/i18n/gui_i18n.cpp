@@ -30,6 +30,108 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
     return zh ? QString::fromUtf8("SPOOF/CROSSBOW 模式需要有效的 RINEX 檔案，目前僅可使用 JAM。")
               : QString("SPOOF/CROSSBOW mode requires a valid RINEX file. JAM only is available right now.");
   }
+  if (std::strcmp(key, "alert.net_no_rinex_jam_only") == 0) {
+    return zh ? QString::fromUtf8("有網路但沒有有效 RINEX，現在僅可使用 JAM 模式。")
+              : QString("Network is available but no valid RINEX is loaded. JAM mode only.");
+  }
+  if (std::strcmp(key, "alert.no_net_no_rinex_jam_only") == 0) {
+    return zh ? QString::fromUtf8("無網路且沒有有效 RINEX，現在僅可使用 JAM 模式。")
+              : QString("No network and no valid RINEX file. JAM mode only.");
+  }
+  if (std::strcmp(key, "alert.no_valid_rinex_jam_only") == 0) {
+    return zh ? QString::fromUtf8("找不到有效 RINEX，現在僅可使用 JAM 模式。")
+              : QString("No valid RINEX file found. JAM mode only.");
+  }
+  if (std::strcmp(key, "alert.rinex_stale_update_brdm") == 0) {
+    return zh ? QString::fromUtf8("RINEX 已超過 2 小時，請先更新 BRDM 再使用一般模式。")
+              : QString("Latest RINEX is older than 2 hours. Update BRDM before general mode.");
+  }
+  if (std::strcmp(key, "alert.gui_standby_init_retry") == 0) {
+    return zh ? QString::fromUtf8("GUI 待命初始化失敗，將在按下 START 時重試。")
+              : QString("GUI standby initialization failed. It will retry on START.");
+  }
+  if (std::strcmp(key, "alert.input_thread_create_failed") == 0) {
+    return zh ? QString::fromUtf8("無法建立輸入執行緒。")
+              : QString("Failed to create input thread.");
+  }
+  if (std::strcmp(key, "alert.crossbow_unlocked_detection_enabled") == 0) {
+    return zh ? QString::fromUtf8("CROSSBOW 已解鎖：WiFi/BLE 偵測已啟用。")
+              : QString("Crossbow unlocked: WiFi/BLE detection enabled.");
+  }
+  if (std::strcmp(key, "alert.crossbow_unlocked_switch_mode") == 0) {
+    return zh ? QString::fromUtf8("CROSSBOW 已解鎖，切到 CROSSBOW 模式即可啟動 WiFi/BLE 偵測。")
+              : QString("Crossbow unlocked. Switch to CROSSBOW mode to start WiFi/BLE detection.");
+  }
+  if (std::strcmp(key, "alert.crossbow_fixed_location") == 0) {
+    return zh ? QString::fromUtf8("CROSSBOW 模式使用固定高科位置。")
+              : QString("Crossbow mode uses fixed Gaoke location.");
+  }
+  if (std::strcmp(key, "alert.jam_map_location_disabled") == 0) {
+    return zh ? QString::fromUtf8("JAM 模式不使用地圖定位。")
+              : QString("JAM mode map location is disabled.");
+  }
+  if (std::strcmp(key, "alert.spoof_crossbow_need_location") == 0) {
+    return zh ? QString::fromUtf8("SPOOF/CROSSBOW 模式在 START 前需要先設定定位。")
+              : QString("SPOOF/CROSSBOW mode requires a location before START.");
+  }
+  if (std::strcmp(key, "alert.choose_interfere_mode") == 0) {
+    return zh ? QString::fromUtf8("請先選擇 INTERFERE 模式：SPOOF / CROSSBOW / JAM。")
+              : QString("Please choose INTERFERE mode first: SPOOF / CROSSBOW / JAM.");
+  }
+  if (std::strcmp(key, "alert.crossbow_launch_canceled_mode_changed") == 0) {
+    return zh ? QString::fromUtf8("CROSSBOW 發射已取消：模式已變更。")
+              : QString("Crossbow launch canceled: mode changed.");
+  }
+  if (std::strcmp(key, "alert.crossbow_need_resolved_location") == 0) {
+    return zh ? QString::fromUtf8("CROSSBOW 模式在 START 前需要先取得定位。")
+              : QString("CROSSBOW mode requires a resolved device location before START.");
+  }
+  if (std::strcmp(key, "alert.crossbow_armed_press_launch") == 0) {
+    return zh ? QString::fromUtf8("CROSSBOW 已待命，請按 LAUNCH 發射。")
+              : QString("Crossbow armed. Press LAUNCH to transmit.");
+  }
+  if (std::strcmp(key, "alert.general_need_valid_rinex") == 0) {
+    return zh ? QString::fromUtf8("一般模式需要有效 RINEX，但目前找不到可用檔案。")
+              : QString("General mode requires a valid RINEX file, but none was found.");
+  }
+  if (std::strcmp(key, "alert.general_need_fresh_rinex") == 0) {
+    return zh ? QString::fromUtf8("一般模式需要 2 小時內 RINEX，請先更新 BRDM。")
+              : QString("General mode requires RINEX data within 2 hours. Please update BRDM.");
+  }
+  if (std::strcmp(key, "alert.usrp_init_failed_file_only") == 0) {
+    return zh ? QString::fromUtf8("USRP 初始化失敗或未連線，將改為僅檔案輸出模式。")
+              : QString("USRP initialization failed or disconnected. File output mode will be used.");
+  }
+  if (std::strcmp(key, "alert.time_conversion_failed") == 0) {
+    return zh ? QString::fromUtf8("目前時間轉換失敗。")
+              : QString("Current time conversion failed.");
+  }
+  if (std::strcmp(key, "alert.simulator_init_failed") == 0) {
+    return zh ? QString::fromUtf8("模擬器初始化失敗。")
+              : QString("Simulator initialization failed.");
+  }
+  if (std::strcmp(key, "alert.cuda_runtime_disabled") == 0) {
+    return zh ? QString::fromUtf8("CUDA 執行已停用。請移除 BDS_DISABLE_CUDA（或設為 0）後重試。")
+              : QString("CUDA runtime is disabled. Remove BDS_DISABLE_CUDA (or set it to 0) to enable.");
+  }
+  if (std::strcmp(key, "alert.cuda_probe_strict_failed") == 0) {
+    return zh ? QString::fromUtf8("CUDA 探測失敗（可能為 driver/toolkit 不相容）。\n"
+                                 "請使用相容 CUDA 版本，或取消 BDS_ENFORCE_CUDA_SMOKE 後重試。")
+              : QString("CUDA runtime probe failed (driver/toolkit mismatch likely). "
+                        "Use matching CUDA toolkit versions, or unset BDS_ENFORCE_CUDA_SMOKE.");
+  }
+  if (std::strcmp(key, "alert.cuda_probe_force_continue") == 0) {
+    return zh ? QString::fromUtf8("CUDA 探測失敗，但嚴格檢查未啟用；將繼續執行。")
+              : QString("CUDA runtime probe failed, but strict check is disabled. Continuing.");
+  }
+  if (std::strcmp(key, "alert.path_queue_full_max5") == 0) {
+    return zh ? QString::fromUtf8("路徑佇列已滿（最多 5 段），新路徑已忽略。")
+              : QString("Path queue is full (max 5 segments). New path was ignored.");
+  }
+  if (std::strcmp(key, "alert.path_file_read_failed") == 0) {
+    return zh ? QString::fromUtf8("路徑檔讀取失敗，該段已跳過。")
+              : QString("Path file read failed. The segment was skipped.");
+  }
 
   if (std::strcmp(key, "rid_rx.active") == 0) {
     return zh ? QString::fromUtf8("[RID] Remote ID 接收已啟動，監聽 BT LE @ 2.426 GHz...")
@@ -153,6 +255,9 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
   if (std::strcmp(key, "label.target_cn0") == 0) {
     return zh ? QString::fromUtf8("目標 C/N0") : QString("Target C/N0");
   }
+  if (std::strcmp(key, "label.height") == 0) {
+    return zh ? QString::fromUtf8("高度") : QString("Height");
+  }
   if (std::strcmp(key, "label.prn_select") == 0) {
     return zh ? QString::fromUtf8("PRN 選擇") : QString("PRN Select");
   }
@@ -225,6 +330,9 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
   if (std::strcmp(key, "osm.legend_restricted_core") == 0) {
     return zh ? QString::fromUtf8("禁飛區") : QString("Core Restricted (Red)");
   }
+  if (std::strcmp(key, "osm.legend_range_cap") == 0) {
+    return zh ? QString::fromUtf8("距離上限區域") : QString("Range Cap Area");
+  }
   if (std::strcmp(key, "osm.lang_btn") == 0) {
     return zh ? QString::fromUtf8("中文") : QString("English");
   }
@@ -275,6 +383,21 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
   }
   if (std::strcmp(key, "style.live_preview") == 0) {
     return zh ? QString::fromUtf8("即時預覽") : QString("Live Preview");
+  }
+  if (std::strcmp(key, "style.preview.page") == 0) {
+    return zh ? QString::fromUtf8("控制頁預覽") : QString("Control Page Preview");
+  }
+  if (std::strcmp(key, "style.preview.interfere") == 0) {
+    return zh ? QString::fromUtf8("預覽攻擊模式") : QString("Preview Interfere");
+  }
+  if (std::strcmp(key, "style.preview.system") == 0) {
+    return zh ? QString::fromUtf8("預覽系統") : QString("Preview System");
+  }
+  if (std::strcmp(key, "style.unlock_crossbow") == 0) {
+    return zh ? QString::fromUtf8("解鎖 CROSSBOW...") : QString("Unlock CROSSBOW...");
+  }
+  if (std::strcmp(key, "style.unlock_crossbow_done") == 0) {
+    return zh ? QString::fromUtf8("CROSSBOW 已解鎖") : QString("CROSSBOW Unlocked");
   }
   if (std::strcmp(key, "style.accent") == 0) {
     return zh ? QString::fromUtf8("主色 (滑桿/高亮)")

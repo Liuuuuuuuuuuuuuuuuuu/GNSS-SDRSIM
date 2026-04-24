@@ -54,6 +54,8 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
       gui_i18n_text(in.language, "osm.remaining_distance_fmt");
     const QString nfz_restricted_label =
       gui_i18n_text(in.language, "osm.legend_restricted_core");
+    const QString range_cap_label =
+      gui_i18n_text(in.language, "osm.legend_range_cap");
 
   const int btn_w = 90;
   const int btn_h = 26;
@@ -311,7 +313,7 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
     out->osm_runtime_rect = QRect();
   }
 
-  if (in.dji_on) {
+  if (in.dji_on || in.show_range_cap_legend) {
     QFont old_font = p.font();
     QFont leg_font = old_font;
     leg_font.setPointSize(old_font.pointSize() > 0 ? old_font.pointSize() : 10);
@@ -331,7 +333,14 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
     QFontMetrics leg_fm(leg_font);
 
     auto content_width = [&](const QFontMetrics &row_metrics) {
-      return row_text_x + row_metrics.horizontalAdvance(nfz_restricted_label) + right_pad;
+      int w = 0;
+      if (in.dji_on) {
+        w = std::max(w, row_text_x + row_metrics.horizontalAdvance(nfz_restricted_label) + right_pad);
+      }
+      if (in.show_range_cap_legend) {
+        w = std::max(w, row_text_x + row_metrics.horizontalAdvance(range_cap_label) + right_pad);
+      }
+      return w;
     };
 
     leg_w = std::max(min_leg_w, content_width(leg_fm));
@@ -341,7 +350,10 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
       leg_w = std::max(min_leg_w, std::min(max_leg_w, content_width(leg_fm)));
     }
 
-    leg_h = std::max(40, box_top + icon_size + bottom_pad);
+    int legend_rows = 0;
+    if (in.dji_on) legend_rows += 1;
+    if (in.show_range_cap_legend) legend_rows += 1;
+    leg_h = std::max(40, box_top + std::max(1, legend_rows) * row_gap + bottom_pad - 4);
 
     int leg_x = in.panel.x() + in.panel.width() - leg_w - 10;
     int leg_y = in.panel.y() + in.panel.height() - leg_h - 30;
@@ -357,19 +369,34 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
       out->nfz_legend_row_rects.clear();
     }
 
-    const int row_y = leg_y + box_top;
-    p.setPen(QPen(QColor(220, 38, 38, 235), 2));
-    p.setBrush(QColor(220, 38, 38, 88));
-    p.drawEllipse(leg_x + row_icon_x, row_y, icon_size, icon_size);
+    int row_y = leg_y + box_top;
+    if (in.dji_on) {
+      p.setPen(QPen(QColor(220, 38, 38, 235), 2));
+      p.setBrush(QColor(220, 38, 38, 88));
+      p.drawEllipse(leg_x + row_icon_x, row_y, icon_size, icon_size);
 
-    p.setPen(QColor("#f1f7ff"));
-    p.drawText(QRect(leg_x + row_text_x, row_y - 1,
-                     leg_w - row_text_x - right_pad, row_gap),
-           Qt::AlignLeft | Qt::AlignVCenter, nfz_restricted_label);
+      p.setPen(QColor("#f1f7ff"));
+      p.drawText(QRect(leg_x + row_text_x, row_y - 1,
+                       leg_w - row_text_x - right_pad, row_gap),
+                 Qt::AlignLeft | Qt::AlignVCenter, nfz_restricted_label);
 
-    if (out) {
-      out->nfz_legend_row_rects.push_back(
-          QRect(leg_x + 8, row_y - 3, leg_w - 16, row_gap));
+      if (out) {
+        out->nfz_legend_row_rects.push_back(
+            QRect(leg_x + 8, row_y - 3, leg_w - 16, row_gap));
+      }
+      row_y += row_gap;
+    }
+
+    if (in.show_range_cap_legend) {
+      const QRect icon_rect(leg_x + row_icon_x, row_y, icon_size, icon_size);
+      p.setPen(QPen(QColor(185, 225, 255, 190), 1.8, Qt::DashLine));
+      p.setBrush(QColor(160, 205, 255, 36));
+      p.drawEllipse(icon_rect);
+
+      p.setPen(QColor("#f1f7ff"));
+      p.drawText(QRect(leg_x + row_text_x, row_y - 1,
+                       leg_w - row_text_x - right_pad, row_gap),
+                 Qt::AlignLeft | Qt::AlignVCenter, range_cap_label);
     }
 
     p.setFont(old_font);

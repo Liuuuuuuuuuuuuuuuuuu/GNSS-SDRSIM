@@ -1,3 +1,7 @@
+#ifndef MAIN_GUI_STATE_INL_CONTEXT
+// This .inl requires MapWidget declarations from main_gui.cpp include context.
+// Parsed standalone by IDE diagnostics it emits false errors; leave this branch empty.
+#else
 enum { PATH_SEG_QUEUED = 0, PATH_SEG_EXECUTING = 1 };
 
 static constexpr int kMaxQueuedSegments = 5;
@@ -34,6 +38,7 @@ GuiControlState g_ctrl = {
   .gain = 1.0,
   .fs_mhz = FS_OUTPUT_HZ / 1e6,
   .target_cn0 = CN0_TARGET_DBHZ,
+  .selected_h_m = 0.0,
   .path_vmax_kmh = 72.0,
   .path_accel_mps2 = 2.0,
   .seed = 1,
@@ -58,6 +63,7 @@ GuiControlState g_ctrl = {
   .crossbow_dji_detected = false,
   .crossbow_dji_confidence = 0.0,
   .crossbow_auto_jam_enabled = false,
+  .crossbow_unlocked = false,
   .show_detailed_ctrl = false,
   .hover_lb_panel = false,
   .hover_rb_panel = false,
@@ -72,10 +78,29 @@ std::atomic<uint32_t> g_gui_stop_req(0);
 std::atomic<uint32_t> g_gui_exit_req(0);
 std::atomic<uint32_t> g_gui_reset_waterfall_req(0);
 std::atomic<uint32_t> g_gui_llh_pick_req(0);
+std::atomic<uint32_t> g_gui_wifi_rid_allow_apply_req(0);
+std::atomic<uint32_t> g_gui_wifi_rid_block_apply_req(0);
+std::atomic<uint32_t> g_gui_wifi_rid_mode_apply_req(0);
+std::atomic<uint32_t> g_gui_crossbow_unlock_req(0);
 std::mutex g_llh_pick_mtx;
 double g_llh_pick_lat_deg = 0.0;
 double g_llh_pick_lon_deg = 0.0;
 double g_llh_pick_h_m = 0.0;
+std::mutex g_gui_wifi_rid_allow_mtx;
+std::string g_gui_wifi_rid_allow_csv;
+std::mutex g_gui_wifi_rid_applied_mtx;
+std::string g_gui_wifi_rid_applied_csv;
+bool g_gui_wifi_rid_applied_initialized = false;
+std::mutex g_gui_wifi_rid_block_mtx;
+std::string g_gui_wifi_rid_block_csv;
+std::mutex g_gui_wifi_rid_block_applied_mtx;
+std::string g_gui_wifi_rid_block_applied_csv;
+bool g_gui_wifi_rid_block_applied_initialized = false;
+std::mutex g_gui_wifi_rid_mode_mtx;
+bool g_gui_wifi_rid_mode_mixed_enabled = true;
+std::mutex g_gui_wifi_rid_mode_applied_mtx;
+bool g_gui_wifi_rid_mode_mixed_applied = true;
+bool g_gui_wifi_rid_mode_applied_initialized = false;
 
 std::mutex g_gui_alert_mtx;
 std::string g_gui_alert_text;
@@ -111,3 +136,4 @@ static bool handle_control_slider_drag(int slider_id, int x, int win_width,
   return control_logic_handle_slider_drag(slider_id, x, win_width, win_height,
                                           &g_ctrl, &g_ctrl_mtx);
 }
+#endif // MAIN_GUI_STATE_INL_CONTEXT

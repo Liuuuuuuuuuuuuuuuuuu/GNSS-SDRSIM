@@ -43,6 +43,56 @@ struct ControlLayout {
     Rect btn_exit;
 };
 
+enum ControlLayoutElementId {
+    CTRL_LAYOUT_ELEMENT_NONE = -1,
+    CTRL_LAYOUT_ELEMENT_HEADER_GEAR = 0,
+    CTRL_LAYOUT_ELEMENT_HEADER_TITLE,
+    CTRL_LAYOUT_ELEMENT_HEADER_UTC,
+    CTRL_LAYOUT_ELEMENT_HEADER_BDT,
+    CTRL_LAYOUT_ELEMENT_HEADER_GPST,
+    CTRL_LAYOUT_ELEMENT_DETAIL_SATS,
+    CTRL_LAYOUT_ELEMENT_BTN_TAB_SIMPLE,
+    CTRL_LAYOUT_ELEMENT_BTN_TAB_DETAIL,
+    CTRL_LAYOUT_ELEMENT_TX_SLIDER,
+    CTRL_LAYOUT_ELEMENT_GAIN_SLIDER,
+    CTRL_LAYOUT_ELEMENT_FS_SLIDER,
+    CTRL_LAYOUT_ELEMENT_CN0_SLIDER,
+    CTRL_LAYOUT_ELEMENT_HEIGHT_SLIDER,
+    CTRL_LAYOUT_ELEMENT_PRN_SLIDER,
+    CTRL_LAYOUT_ELEMENT_PATH_V_SLIDER,
+    CTRL_LAYOUT_ELEMENT_PATH_A_SLIDER,
+    CTRL_LAYOUT_ELEMENT_CH_SLIDER,
+    CTRL_LAYOUT_ELEMENT_SW_MODE,
+    CTRL_LAYOUT_ELEMENT_SW_SYS,
+    CTRL_LAYOUT_ELEMENT_TG_MEO,
+    CTRL_LAYOUT_ELEMENT_TG_IONO,
+    CTRL_LAYOUT_ELEMENT_TG_CLK,
+    CTRL_LAYOUT_ELEMENT_SW_FMT,
+    CTRL_LAYOUT_ELEMENT_SW_JAM,
+    CTRL_LAYOUT_ELEMENT_BTN_START,
+    CTRL_LAYOUT_ELEMENT_BTN_STOP,
+    CTRL_LAYOUT_ELEMENT_BTN_RETURN,
+    CTRL_LAYOUT_ELEMENT_BTN_EXIT,
+    CTRL_LAYOUT_ELEMENT_COUNT
+};
+
+struct ControlRectAdjustment {
+    int dx = 0;
+    int dy = 0;
+    int dw = 0;
+    int dh = 0;
+};
+
+struct ControlLayoutOverrides {
+    ControlRectAdjustment entries[CTRL_LAYOUT_ELEMENT_COUNT];
+};
+
+struct ControlSliderPartOverrides {
+    ControlRectAdjustment label[CTRL_LAYOUT_ELEMENT_COUNT];
+    ControlRectAdjustment track[CTRL_LAYOUT_ELEMENT_COUNT];
+    ControlRectAdjustment value[CTRL_LAYOUT_ELEMENT_COUNT];
+};
+
 enum {
     CTRL_SLIDER_TX = 0,
     CTRL_SLIDER_GAIN,
@@ -62,10 +112,15 @@ double slider_ratio_hit(const Rect &r, int x);
 Rect slider_value_rect(const Rect &r);
 
 void compute_control_layout(int win_width, int win_height, ControlLayout *lo, bool detailed,
-                            bool single_system_sat_layout = false);
+                            bool single_system_sat_layout = false,
+                            const ControlLayoutOverrides *overrides = nullptr);
 int control_slider_hit_test(int x, int y, int win_width, int win_height, bool detailed,
                             bool single_system_sat_layout = false);
 int control_value_hit_test(int x, int y, int win_width, int win_height, bool detailed,
                            bool single_system_sat_layout = false);
+Rect *control_layout_mutable_rect(ControlLayout *lo, ControlLayoutElementId id);
+const Rect *control_layout_rect(const ControlLayout *lo, ControlLayoutElementId id);
+ControlLayoutElementId control_layout_hit_test(const ControlLayout &lo, int x, int y);
+const char *control_layout_element_debug_name(ControlLayoutElementId id);
 
 #endif

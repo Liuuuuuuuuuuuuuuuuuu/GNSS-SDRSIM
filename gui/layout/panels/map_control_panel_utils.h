@@ -9,6 +9,7 @@
 
 #include "gui/core/state/control_state.h"
 #include "gui/core/i18n/gui_i18n.h"
+#include "gui/layout/geometry/control_layout.h"
 #include "gui/core/state/signal_snapshot.h"
 
 struct DroneCenterListItem {
@@ -32,6 +33,8 @@ struct MapControlPanelInput {
   TimeInfo time_info;
   QString rnx_name_bds;
   QString rnx_name_gps;
+  std::vector<int> detail_active_gps_prns;
+  std::vector<int> detail_active_bds_prns;
   GuiLanguage language = GuiLanguage::English;
   double control_text_scale = 1.0;
   double caption_text_scale = 1.0;
@@ -41,6 +44,8 @@ struct MapControlPanelInput {
   QColor border_color = QColor("#b9cadf");
   QColor text_color = QColor("#f8fbff");
   QColor dim_text_color = QColor("#6b7b90");
+  const ControlLayoutOverrides *layout_overrides = nullptr;
+  const ControlSliderPartOverrides *slider_part_overrides = nullptr;
 
   bool show_drone_center = false;
   int unknown_signal_count = 0;

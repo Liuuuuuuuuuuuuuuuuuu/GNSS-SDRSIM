@@ -26,6 +26,9 @@ int gnss_rx_consume_fix(double *lat_deg, double *lon_deg, double *h_m);
  */
 void gnss_rx_cancel(void);
 
+/* Fast cancel for immediate app exit: send SIGKILL and return immediately. */
+void gnss_rx_cancel_fast(void);
+
 /* 是否仍在執行中 */
 int gnss_rx_is_active(void);
 

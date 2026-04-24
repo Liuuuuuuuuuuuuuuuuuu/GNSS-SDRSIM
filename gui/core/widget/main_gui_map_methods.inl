@@ -44,6 +44,7 @@ void MapWidget::set_selected_llh_from_point(const QPoint &pos) {
   {
     std::lock_guard<std::mutex> lk(g_ctrl_mtx);
     g_ctrl.llh_ready = true;
+    g_ctrl.selected_h_m = selected_h_m_;
     g_ctrl.crossbow_direction_confirmed = false;
     g_ctrl.crossbow_distance_ok = false;
   }
@@ -132,6 +133,7 @@ void MapWidget::set_selected_llh_direct(double lat_deg, double lon_deg,
   {
     std::lock_guard<std::mutex> lk(g_ctrl_mtx);
     g_ctrl.llh_ready = true;
+    g_ctrl.selected_h_m = selected_h_m_;
     g_ctrl.crossbow_direction_confirmed = false;
     g_ctrl.crossbow_distance_ok = false;
   }

@@ -1,3 +1,7 @@
+#ifndef MAP_WIDGET_TUTORIAL_METHODS_INL_CONTEXT
+// This .inl requires MapWidget declarations from main_gui.cpp include context.
+// Parsed standalone by IDE diagnostics it emits false errors; leave this branch empty.
+#else
 void MapWidget::draw_tutorial_overlay(QPainter &p, int win_width,
                                       int win_height) {
   bool running_ui = false;
@@ -251,3 +255,4 @@ void MapWidget::draw_tutorial_overlay(QPainter &p, int win_width,
   tutorial_glow_step_           = overlay_state.glow_step;
   tutorial_glow_start_tp_       = overlay_state.glow_start_tp;
 }
+#endif // MAP_WIDGET_TUTORIAL_METHODS_INL_CONTEXT

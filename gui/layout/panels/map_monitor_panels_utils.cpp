@@ -7,6 +7,7 @@
 #include "gui/core/runtime/rf_mode_utils.h"
 
 #include <QFontMetrics>
+#include <QConicalGradient>
 #include <QLinearGradient>
 #include <QPainterPath>
 #include <QPen>
@@ -282,94 +283,21 @@ void map_draw_constellation_panel(QPainter &p, int win_width, int win_height,
   if (draw_rect.width() < 16 || draw_rect.height() < 16)
     return;
 
-  // In Crossbow mode with Detail tab, show radar instead of constellation
-  if (in.show_drone_center && in.ctrl.interference_selection == 2) {
-    // Draw radar for tactical targeting
-    draw_panel_title(p, panel_x, panel_y, panel_h, "Radar");
-    
-    const QRect radar = draw_rect.adjusted(0, 0, 0, -8);
-    const QPoint c = radar.center();
-    const int r = std::max(18, std::min(radar.width(), radar.height()) / 2 - 2);
-    p.setPen(QPen(QColor(64, 168, 94, 120), 1));
-    p.setBrush(Qt::NoBrush);
-    p.drawEllipse(c, r, r);
-    p.drawEllipse(c, (int)std::llround(r * 0.66), (int)std::llround(r * 0.66));
-    p.drawEllipse(c, (int)std::llround(r * 0.33), (int)std::llround(r * 0.33));
-    p.drawLine(c.x() - r, c.y(), c.x() + r, c.y());
-    p.drawLine(c.x(), c.y() - r, c.x(), c.y() + r);
+  int cx = draw_rect.center().x();
+  int cy = draw_rect.center().y();
+  p.setPen(QPen(QColor("#c4d2e4"), 1));
+  p.drawLine(draw_rect.left(), cy, draw_rect.right(), cy);
+  p.drawLine(cx, draw_rect.top(), cx, draw_rect.bottom());
 
-    // Physical rings for tactical thresholds
-    const double max_range_m = 100.0;
-    const double ring_marks[] = {10.0, 25.0, 50.0, 100.0};
-    for (double m : ring_marks) {
-      const double rr = (m / max_range_m) * r;
-      const int rp = (int)std::llround(std::max(3.0, rr));
-      p.setPen(QPen(QColor(46, 204, 113, m >= 100.0 ? 140 : 110), 1,
-                    m == 25.0 ? Qt::DashLine : Qt::SolidLine));
-      p.drawEllipse(c, rp, rp);
-    }
+  draw_constellation_points(p, draw_rect, in.spec_snap);
 
-    // Rotating sweep arm with soft trail
-    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-    const double sweep_rad = (double)(now_ms % 4000) / 4000.0 * 2.0 * M_PI;
-    for (int i = 0; i < 12; ++i) {
-      const double a = sweep_rad - (double)i * (M_PI / 32.0);
-      const int alpha = std::max(15, 130 - i * 10);
-      p.setPen(QPen(QColor(40, 255, 120, alpha), i == 0 ? 2.2 : 1.2));
-      const int ex = c.x() + (int)std::llround(std::cos(a) * r);
-      const int ey = c.y() + (int)std::llround(std::sin(a) * r);
-      p.drawLine(c, QPoint(ex, ey));
-    }
-
-    // Draw radar points
-    for (const auto &pt : in.radar_points) {
-      const double norm = std::max(0.0, std::min(1.0, pt.distance_m / max_range_m));
-      const double rr = std::max(6.0, (1.0 - norm) * r);
-      const double ang = (pt.bearing_deg - 90.0) * M_PI / 180.0;
-      const int x = c.x() + (int)std::llround(std::cos(ang) * rr);
-      const int y = c.y() + (int)std::llround(std::sin(ang) * rr);
-      p.setPen(Qt::NoPen);
-        const QColor point_color =
-          pt.hostile
-            ? QColor(255, 85, 85, 230)
-            : (pt.is_wifi_rid
-               ? QColor(132, 204, 22, 220)
-               : (pt.is_ble_rid ? QColor(56, 189, 248, 230)
-                        : QColor(99, 102, 241, 210)));
-        p.setBrush(point_color);
-      p.drawEllipse(QPoint(x, y), 4, 4);
-      
-      if (pt.has_speed && pt.speed_mps > 0.2) {
-        const double tail = std::min(16.0, 2.0 + pt.speed_mps * 1.2);
-        const int tx = x - (int)std::llround(std::cos(ang) * tail);
-        const int ty = y - (int)std::llround(std::sin(ang) * tail);
-        p.setPen(QPen(point_color.lighter(120), 1.1));
-        p.drawLine(QPoint(x, y), QPoint(tx, ty));
-      }
-    }
-
-    if (in.radar_points.empty()) {
-      p.setPen(QColor("#8ab4f8"));
-      p.drawText(radar, Qt::AlignCenter, "No target");
-    }
-  } else {
-    // Normal constellation panel
-    int cx = draw_rect.center().x();
-    int cy = draw_rect.center().y();
-    p.setPen(QPen(QColor("#c4d2e4"), 1));
-    p.drawLine(draw_rect.left(), cy, draw_rect.right(), cy);
-    p.drawLine(cx, draw_rect.top(), cx, draw_rect.bottom());
-
-    draw_constellation_points(p, draw_rect, in.spec_snap);
-
-    draw_panel_title(p, panel_x, panel_y, panel_h,
-                     gui_i18n_text(in.language, "monitor.constellation"));
-    p.setPen(QColor("#c4d2e4"));
-    draw_monitor_x_labels(p, draw_rect, draw_rect.bottom() + 8, "-1", "0", "+1");
-    p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "+1");
-    p.drawText(monitor_y_label_rect(draw_rect, draw_rect.center().y(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "0");
-    p.drawText(monitor_y_label_rect(draw_rect, draw_rect.bottom(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "-1");
-  }
+  draw_panel_title(p, panel_x, panel_y, panel_h,
+                   gui_i18n_text(in.language, "monitor.constellation"));
+  p.setPen(QColor("#c4d2e4"));
+  draw_monitor_x_labels(p, draw_rect, draw_rect.bottom() + 8, "-1", "0", "+1");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.top(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "+1");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.center().y(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "0");
+  p.drawText(monitor_y_label_rect(draw_rect, draw_rect.bottom(), 48, 14), Qt::AlignRight | Qt::AlignVCenter, "-1");
 }
 
 void map_update_waterfall_image(int win_width, int win_height,

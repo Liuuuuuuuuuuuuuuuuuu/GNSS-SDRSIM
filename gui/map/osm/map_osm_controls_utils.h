@@ -12,6 +12,7 @@ struct MapOsmControlsInput {
   bool running_ui = false;
   bool can_undo = false;
   bool dji_on = false;
+  bool show_range_cap_legend = false;
   bool dark_map_mode = false;
   bool tutorial_enabled = false;
   bool tutorial_hovered = false;

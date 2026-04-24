@@ -298,6 +298,7 @@ static void emit_udp(const uint8_t mac[6],
         "\"detected\":true,"
         "\"confidence\":%.2f,"
         "\"source\":\"bt-le-rid\","
+        "\"remote_id\":true,"
         "\"vendor\":\"%s\","
         "\"model\":\"%s\","
         "\"device_id\":\"%s\","

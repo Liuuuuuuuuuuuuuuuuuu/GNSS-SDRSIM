@@ -1,4 +1,123 @@
+#ifndef MAPWIDGET_PATH_METHODS_INL_CONTEXT
+// This .inl requires MapWidget declarations from main_gui.cpp include context.
+// Parsed standalone by editor diagnostics, it can emit false errors.
+#else
+
+static double detect_mem_total_gb() {
+  FILE *fp = std::fopen("/proc/meminfo", "r");
+  if (!fp)
+    return 8.0;
+
+  char key[64] = {0};
+  long kb = 0;
+  char unit[16] = {0};
+  double gb = 8.0;
+  while (std::fscanf(fp, "%63s %ld %15s", key, &kb, unit) == 3) {
+    if (std::strcmp(key, "MemTotal:") == 0) {
+      gb = (double)kb / (1024.0 * 1024.0);
+      break;
+    }
+  }
+  std::fclose(fp);
+  return gb;
+}
+
+struct DynamicSegmentCapProfile {
+  bool ready = false;
+  int tier = 0;
+  double sample_budget = 220000.0;
+  double hard_cap_m = 40000.0;
+};
+
+static std::once_flag g_dynamic_cap_once;
+static DynamicSegmentCapProfile g_dynamic_cap_profile;
+
+static void init_dynamic_segment_cap_profile_once() {
+  const unsigned cores_raw = std::thread::hardware_concurrency();
+  const unsigned cores = (cores_raw == 0) ? 4 : cores_raw;
+  const double mem_gb = detect_mem_total_gb();
+
+  int tier = 0; // 0=low,1=mid,2=high,3=ultra
+  if (cores >= 16 && mem_gb >= 32.0) {
+    tier = 3;
+  } else if (cores >= 12 && mem_gb >= 16.0) {
+    tier = 2;
+  } else if (cores >= 8 && mem_gb >= 8.0) {
+    tier = 1;
+  }
+
+  static const double kSampleBudgetByTier[4] = {
+      220000.0, 380000.0, 650000.0, 1000000.0};
+  static const double kHardCapByTierM[4] = {
+      40000.0, 70000.0, 120000.0, 180000.0};
+
+  g_dynamic_cap_profile.ready = true;
+  g_dynamic_cap_profile.tier = tier;
+  g_dynamic_cap_profile.sample_budget = kSampleBudgetByTier[tier];
+  g_dynamic_cap_profile.hard_cap_m = kHardCapByTierM[tier];
+}
+
+static const DynamicSegmentCapProfile &get_dynamic_segment_cap_profile() {
+  std::call_once(g_dynamic_cap_once, init_dynamic_segment_cap_profile_once);
+  return g_dynamic_cap_profile;
+}
+
+// Adaptive segment cap: choose a tier by machine resources and turn it into
+// a distance budget using current path speed and PATH_UPDATE_HZ.
+static double compute_dynamic_segment_cap_m(double vmax_mps) {
+  const DynamicSegmentCapProfile &profile = get_dynamic_segment_cap_profile();
+
+  const double v_eff = clamp_double(vmax_mps, 5.0, 80.0);
+  const double by_samples = (profile.sample_budget / PATH_UPDATE_HZ) * v_eff;
+  const double cap_m = std::min(by_samples, profile.hard_cap_m);
+
+  return clamp_double(cap_m, 15000.0, 220000.0);
+}
+
 static constexpr int kMaxRouteCacheEntries = 96;
+
+static double meters_per_pixel_at_lat(double lat_deg, int zoom) {
+  const double cos_lat = std::max(0.05, std::cos(lat_deg * M_PI / 180.0));
+  const double world_px = 256.0 * (double)(1 << std::max(0, zoom));
+  return (40075016.0 * cos_lat) / std::max(1.0, world_px);
+}
+
+static void project_point_to_distance_cap(double lat0_deg, double lon0_deg,
+                                          double lat1_deg, double lon1_deg,
+                                          double cap_m, double *out_lat_deg,
+                                          double *out_lon_deg) {
+  if (!out_lat_deg || !out_lon_deg) {
+    return;
+  }
+
+  const double lat0 = lat0_deg * M_PI / 180.0;
+  const double lon0 = lon0_deg * M_PI / 180.0;
+  const double lat1 = lat1_deg * M_PI / 180.0;
+  const double lon1 = lon1_deg * M_PI / 180.0;
+
+  const double dlon = lon1 - lon0;
+  const double y = std::sin(dlon) * std::cos(lat1);
+  const double x = std::cos(lat0) * std::sin(lat1) -
+                   std::sin(lat0) * std::cos(lat1) * std::cos(dlon);
+  const double bearing = std::atan2(y, x);
+
+  const double earth_r_m = 6371000.0;
+  const double ang = std::max(0.0, cap_m) / earth_r_m;
+
+  const double sin_lat0 = std::sin(lat0);
+  const double cos_lat0 = std::cos(lat0);
+  const double sin_ang = std::sin(ang);
+  const double cos_ang = std::cos(ang);
+
+  const double lat2 = std::asin(sin_lat0 * cos_ang +
+                                cos_lat0 * sin_ang * std::cos(bearing));
+  const double lon2 =
+      lon0 + std::atan2(std::sin(bearing) * sin_ang * cos_lat0,
+                        cos_ang - sin_lat0 * std::sin(lat2));
+
+  *out_lat_deg = lat2 * 180.0 / M_PI;
+  *out_lon_deg = wrap_lon_deg(lon2 * 180.0 / M_PI);
+}
 
 bool MapWidget::panel_point_to_llh(const QPoint &pos, double *lat_deg,
                                    double *lon_deg) const {
@@ -145,10 +264,26 @@ void MapWidget::set_preview_target(const QPoint &pos, int mode) {
   preview_polyline_.clear();
   preview_route_key_.clear();
 
-  if (distance_m_approx(slat, slon, lat, lon) <= 0.5) {
+  const double raw_dist_m = distance_m_approx(slat, slon, lat, lon);
+  if (raw_dist_m <= 0.5) {
     has_preview_segment_ = false;
     plan_status_ = tr_text("path.too_close").toStdString();
     return;
+  }
+
+  double vmax_mps = 20.0;
+  {
+    std::lock_guard<std::mutex> lk(g_ctrl_mtx);
+    vmax_mps = g_ctrl.path_vmax_kmh / 3.6;
+  }
+  const double max_segment_m = compute_dynamic_segment_cap_m(vmax_mps);
+
+  if (raw_dist_m > max_segment_m) {
+    const double clamp_m = std::max(1.0, max_segment_m - 0.5);
+    project_point_to_distance_cap(slat, slon, lat, lon, clamp_m, &lat, &lon);
+    preview_end_lat_deg_ = lat;
+    preview_end_lon_deg_ = lon;
+    map_gui_push_alert(0, "Selected point exceeded range cap; snapped to nearest cap boundary.");
   }
 
   if (mode == PATH_MODE_LINE) {
@@ -191,6 +326,9 @@ void MapWidget::confirm_preview_segment() {
 
   char file_path[256] = {0};
   std::vector<LonLat> seg_polyline;
+  const double segment_dist_m =
+      distance_m_approx(preview_start_lat_deg_, preview_start_lon_deg_,
+                        preview_end_lat_deg_, preview_end_lon_deg_);
   double vmax_mps = 20.0;
   double accel_mps2 = 2.0;
   {
@@ -198,6 +336,27 @@ void MapWidget::confirm_preview_segment() {
     vmax_mps = g_ctrl.path_vmax_kmh / 3.6;
     accel_mps2 = g_ctrl.path_accel_mps2;
   }
+  const double max_segment_m = compute_dynamic_segment_cap_m(vmax_mps);
+
+  if (segment_dist_m > max_segment_m) {
+    char msg[160] = {0};
+    std::snprintf(msg, sizeof(msg), "Path too long (adaptive cap %.1f km). Split into shorter segments.",
+                  max_segment_m / 1000.0);
+    plan_status_ = msg;
+    map_gui_push_alert(1, msg);
+    has_preview_segment_ = false;
+    preview_polyline_.clear();
+    preview_route_key_.clear();
+    return;
+  }
+
+  // In PLAN mode, never fallback to synchronous route fetch here.
+  // Wait until async prefetch finishes, otherwise UI may block.
+  if (preview_mode_ == PATH_MODE_PLAN && preview_polyline_.size() < 2) {
+    plan_status_ = tr_text("path.road_loading").toStdString();
+    return;
+  }
+
   if (!build_segment_path_file(preview_start_lat_deg_, preview_start_lon_deg_,
                                preview_end_lat_deg_, preview_end_lon_deg_,
                                preview_mode_, vmax_mps, accel_mps2,
@@ -219,7 +378,7 @@ void MapWidget::confirm_preview_segment() {
   seg.mode = preview_mode_;
   seg.state = PATH_SEG_QUEUED;
   seg.polyline = std::move(seg_polyline);
-  std::snprintf(seg.path_file, sizeof(seg.path_file), "%s", file_path);
+  snprintf(seg.path_file, sizeof(seg.path_file), "%s", file_path);
 
   {
     std::lock_guard<std::mutex> lk(g_path_seg_mtx);
@@ -260,8 +419,8 @@ bool MapWidget::lonlat_to_osm_screen(double lat_deg, double lon_deg,
   bool ok = false;
   for (int k = -1; k <= 1; ++k) {
     double wx = wx0 + (double)k * world;
-    int sx = panel.x() + (int)llround(wx - left);
-    int sy = panel.y() + (int)llround(wy - top);
+    int sx = panel.x() + (int)std::llround(wx - left);
+    int sy = panel.y() + (int)std::llround(wy - top);
     double dx = (double)sx - (double)(panel.x() + panel.width() / 2);
     double dy = (double)sy - (double)(panel.y() + panel.height() / 2);
     double d2 = dx * dx + dy * dy;
@@ -291,20 +450,8 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
     jam_selected = (interference_selection == 1);
   }
 
-  const bool should_lock_crossbow_center =
-      running_ui && (interference_selection == 2) && has_selected_llh_;
-  if (!should_lock_crossbow_center) {
-    crossbow_center_locked_ = false;
-  } else {
-    if (!crossbow_center_locked_) {
-      crossbow_center_locked_ = true;
-      crossbow_center_lock_lat_deg_ = selected_lat_deg_;
-      crossbow_center_lock_lon_deg_ = selected_lon_deg_;
-    }
-    osm_center_px_x_ = osm_lon_to_world_x(crossbow_center_lock_lon_deg_, osm_zoom_);
-    osm_center_px_y_ = osm_lat_to_world_y(crossbow_center_lock_lat_deg_, osm_zoom_);
-    normalize_osm_center();
-  }
+  // Keep map free-pan even after selecting a point in crossbow mode.
+  crossbow_center_locked_ = false;
 
   // Mode transition hook: switching from spoof/jam to cross should immediately
   // activate cross-specific interaction state.
@@ -355,9 +502,6 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
           const int az_zoom = std::max(15, std::min(20, (int)std::llround(az_zoom_f)));
           if (osm_zoom_ < az_zoom) {
             osm_zoom_ = az_zoom;
-            osm_center_px_x_ = osm_lon_to_world_x(selected_lon_deg_, osm_zoom_);
-            osm_center_px_y_ = osm_lat_to_world_y(selected_lat_deg_, osm_zoom_);
-            normalize_osm_center();
             request_visible_tiles();
           }
         }
@@ -494,6 +638,34 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
     p.drawImage(panel.topLeft(), osm_bg_cache_);
   }
 
+  // After START, visualize adaptive max segment distance as a light area with
+  // dashed boundary so path planning is constrained to in-range points.
+  if (running_ui && !jam_selected && has_selected_llh_) {
+    QPoint anchor_px;
+    if (lonlat_to_osm_screen(selected_lat_deg_, selected_lon_deg_, panel,
+                             &anchor_px)) {
+      double vmax_mps = 20.0;
+      {
+        std::lock_guard<std::mutex> lk(g_ctrl_mtx);
+        vmax_mps = g_ctrl.path_vmax_kmh / 3.6;
+      }
+      const double max_segment_m = compute_dynamic_segment_cap_m(vmax_mps);
+      const double mpp = meters_per_pixel_at_lat(selected_lat_deg_, osm_zoom_);
+      const double radius_px =
+          std::max(4.0, max_segment_m / std::max(0.01, mpp));
+
+      p.save();
+      p.setClipRect(panel);
+      p.setPen(Qt::NoPen);
+      p.setBrush(QColor(160, 205, 255, 36));
+      p.drawEllipse(QPointF(anchor_px), radius_px, radius_px);
+      p.setPen(QPen(QColor(185, 225, 255, 190), 2.0, Qt::DashLine));
+      p.setBrush(Qt::NoBrush);
+      p.drawEllipse(QPointF(anchor_px), radius_px, radius_px);
+      p.restore();
+    }
+  }
+
   MapOsmPanelState osm_out;
   map_draw_osm_panel_overlay(p, osm_in, &osm_out);
   lang_btn_rect_ = osm_out.lang_btn_rect;
@@ -604,6 +776,7 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
   if (is_crossbow_mode() && dji_detect_mgr_) {
     const auto snap = dji_detect_mgr_->targets_snapshot();
     const auto rid_diag = dji_detect_mgr_->last_rid_diag_snapshot();
+    const auto rid_runtime = dji_detect_mgr_->last_rid_runtime_snapshot();
     int hostile_count = 0;
     int aoa_anon_count = 0;
     double nearest_aoa_m = -1.0;
@@ -624,14 +797,18 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
     const QString src_txt = dji_detect_ui_source_.trimmed().isEmpty()
                                 ? QStringLiteral("n/a")
                                 : dji_detect_ui_source_.trimmed();
+    const QString model_txt = dji_detect_ui_model_.trimmed().isEmpty()
+                    ? QStringLiteral("n/a")
+                    : dji_detect_ui_model_.trimmed();
     const QString aoa_dist_txt = (nearest_aoa_m > 0.0)
                                      ? QString::number(nearest_aoa_m, 'f', 1)
                                      : QStringLiteral("n/a");
-    const QString dbg1 = QString("RID DBG  det=%1  conf=%2%%  src=%3")
+    const QString dbg1 = QString("RID DBG  det=%1  conf=%2%%  src=%3  model=%4")
                              .arg(dji_detect_ui_detected_ ? QStringLiteral("Y")
                                                            : QStringLiteral("N"))
                              .arg(conf_pct)
-                             .arg(src_txt);
+                 .arg(src_txt)
+                 .arg(model_txt);
     const QString dbg2 = QString("targets=%1 hostile=%2 aoaAnon=%3 nearAoA=%4m")
                              .arg((int)snap.size())
                              .arg(hostile_count)
@@ -659,6 +836,28 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
                     .arg(rid_diag.has_sample && !rid_diag.gate_status.isEmpty()
                          ? rid_diag.gate_status
                          : QStringLiteral("n/a"));
+    auto bridge_runtime_line = [&](const QString &label, const DjiRidBridgeSnapshot &bridge) {
+      if (!bridge.has_sample) {
+        return QString("%1: n/a").arg(label);
+      }
+      QString detail = QString("rx %1 oui %2 loc %3 rec %4")
+                           .arg((qulonglong)bridge.rx)
+                           .arg((qulonglong)bridge.oui)
+                           .arg((qulonglong)bridge.loc)
+                           .arg(bridge.recovery_count);
+      if (bridge.health_status == QStringLiteral("warn-idle") ||
+          bridge.health_status == QStringLiteral("idle")) {
+        detail += QString(" idle %1s").arg(bridge.idle_windows);
+      } else if (bridge.health_status == QStringLiteral("warn-no-signature")) {
+        detail += QString(" noSig %1s").arg(bridge.no_signature_windows);
+      }
+      const QString health = bridge.health_status.isEmpty()
+                                 ? QStringLiteral("ok")
+                                 : bridge.health_status;
+      return QString("%1: %2 | %3").arg(label, health, detail);
+    };
+    const QString wifi_runtime_line = bridge_runtime_line(QStringLiteral("Wi-Fi"), rid_runtime.wifi);
+    const QString ble_runtime_line = bridge_runtime_line(QStringLiteral("BLE"), rid_runtime.ble);
 
     QFont old_font = p.font();
     QFont dbg_font = old_font;
@@ -699,8 +898,10 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
     const int diag_w = std::max({
         p.fontMetrics().horizontalAdvance(last_rid_line),
         p.fontMetrics().horizontalAdvance(geom_line),
-        p.fontMetrics().horizontalAdvance(gate_line)}) + pad_x * 2;
-    const int diag_h = h_line * 3 + line_gap * 2 + pad_y * 2;
+      p.fontMetrics().horizontalAdvance(gate_line),
+      p.fontMetrics().horizontalAdvance(wifi_runtime_line),
+      p.fontMetrics().horizontalAdvance(ble_runtime_line)}) + pad_x * 2;
+    const int diag_h = h_line * 5 + line_gap * 4 + pad_y * 2;
     const QRect diag_box(panel.right() - diag_w - 14, panel.y() + 56, diag_w, diag_h);
 
     p.setRenderHint(QPainter::Antialiasing, true);
@@ -729,6 +930,24 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
                      diag_box.y() + pad_y + (h_line + line_gap) * 2,
                      diag_box.width() - pad_x * 2, h_line),
                Qt::AlignLeft | Qt::AlignVCenter, gate_line);
+    p.setPen(rid_runtime.wifi.health_status == QStringLiteral("warn-idle") ||
+             rid_runtime.wifi.health_status == QStringLiteral("idle") ||
+             rid_runtime.wifi.health_status == QStringLiteral("warn-no-signature")
+           ? QColor(252, 165, 165)
+           : QColor(147, 197, 253, 225));
+    p.drawText(QRect(diag_box.x() + pad_x,
+             diag_box.y() + pad_y + (h_line + line_gap) * 3,
+             diag_box.width() - pad_x * 2, h_line),
+           Qt::AlignLeft | Qt::AlignVCenter, wifi_runtime_line);
+    p.setPen(rid_runtime.ble.health_status == QStringLiteral("warn-idle") ||
+             rid_runtime.ble.health_status == QStringLiteral("idle") ||
+             rid_runtime.ble.health_status == QStringLiteral("warn-no-signature")
+           ? QColor(252, 165, 165)
+           : QColor(125, 211, 252, 225));
+    p.drawText(QRect(diag_box.x() + pad_x,
+             diag_box.y() + pad_y + (h_line + line_gap) * 4,
+             diag_box.width() - pad_x * 2, h_line),
+           Qt::AlignLeft | Qt::AlignVCenter, ble_runtime_line);
     p.setRenderHint(QPainter::Antialiasing, false);
 
     p.setFont(old_font);
@@ -875,14 +1094,22 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
 
           for (const auto &t : dots) {
             if (!t.confirmed_dji || t.whitelisted) continue;
-            if (!t.has_bearing || !t.has_distance || t.distance_m <= 0.0) continue;
-
-            const double brg_rad_d = t.bearing_deg * M_PI / 180.0;
-            const double dlat_d = (t.distance_m * std::cos(brg_rad_d)) / 111320.0;
-            const double dlon_d = (t.distance_m * std::sin(brg_rad_d)) /
-                                   (111320.0 * cos_lat_d);
-            const double tgt_lat_d = recv_lat + dlat_d;
-            const double tgt_lon_d = recv_lon + dlon_d;
+            double tgt_lat_d = 0.0;
+            double tgt_lon_d = 0.0;
+            double label_distance_m = t.distance_m;
+            if (t.has_geo) {
+              tgt_lat_d = t.drone_lat;
+              tgt_lon_d = t.drone_lon;
+              label_distance_m = distance_m_approx(recv_lat, recv_lon, tgt_lat_d, tgt_lon_d);
+            } else {
+              if (!t.has_bearing || !t.has_distance || t.distance_m <= 0.0) continue;
+              const double brg_rad_d = t.bearing_deg * M_PI / 180.0;
+              const double dlat_d = (t.distance_m * std::cos(brg_rad_d)) / 111320.0;
+              const double dlon_d = (t.distance_m * std::sin(brg_rad_d)) /
+                                     (111320.0 * cos_lat_d);
+              tgt_lat_d = recv_lat + dlat_d;
+              tgt_lon_d = recv_lon + dlon_d;
+            }
 
             const double wx0_d = osm_lon_to_world_x(tgt_lon_d, zoom_level);
             const double wy_d  = osm_lat_to_world_y(tgt_lat_d, zoom_level);
@@ -927,7 +1154,7 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
               p.setPen(QColor(255, 200, 200, 215));
               p.drawText(QPointF(dot_pt.x() + 8.0, dot_pt.y() + 4.0),
                          QString("%1m").arg(
-                             static_cast<int>(std::llround(t.distance_m))));
+                             static_cast<int>(std::llround(label_distance_m))));
             }
           }
           p.restore();
@@ -943,3 +1170,5 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
     }
   }
 }
+
+#endif // MAPWIDGET_PATH_METHODS_INL_CONTEXT

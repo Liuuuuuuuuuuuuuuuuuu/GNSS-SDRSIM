@@ -1,3 +1,7 @@
+#ifndef MAIN_GUI_WIDGET_METHODS_INL_CONTEXT
+// This .inl requires MapWidget declarations from main_gui.cpp include context.
+// Parsed standalone by IDE diagnostics it emits false errors; leave this branch empty.
+#else
 void MapWidget::update_receiver_animation(std::chrono::steady_clock::time_point now,
                                           bool running_ui, bool *moved) {
   if (moved)
@@ -58,7 +62,7 @@ void MapWidget::update_receiver_animation(std::chrono::steady_clock::time_point 
     receiver_anim_lat_deg_ = receiver_anim_target_lat_deg_;
     receiver_anim_lon_deg_ = receiver_anim_target_lon_deg_;
   } else if (dt_sec > 0.0) {
-    const double tau_sec = 0.30;
+    const double tau_sec = 0.15;  /* Reduced from 0.30s for faster UI responsiveness */
     double alpha = 1.0 - std::exp(-dt_sec / tau_sec);
     alpha = clamp_double(alpha, 0.0, 1.0);
 
@@ -121,11 +125,21 @@ void MapWidget::onTick() {
     bool nearest_has_speed = false;
     const auto targets = dji_detect_mgr_->targets_snapshot();
     for (const auto &t : targets) {
-      if (!t.confirmed_dji || t.whitelisted || !t.has_distance || t.distance_m < 0.0) {
+      if (!t.confirmed_dji || t.whitelisted) {
         continue;
       }
-      if (nearest_hostile_m < 0.0 || t.distance_m < nearest_hostile_m) {
-        nearest_hostile_m = t.distance_m;
+      double eval_distance_m = -1.0;
+      if (t.has_geo && g_receiver_valid) {
+        eval_distance_m = distance_m_approx(g_receiver_lat_deg, g_receiver_lon_deg,
+                                            t.drone_lat, t.drone_lon);
+      } else if (t.has_distance) {
+        eval_distance_m = t.distance_m;
+      }
+      if (eval_distance_m < 0.0) {
+        continue;
+      }
+      if (nearest_hostile_m < 0.0 || eval_distance_m < nearest_hostile_m) {
+        nearest_hostile_m = eval_distance_m;
         nearest_speed_mps = t.speed_mps;
         nearest_has_speed = t.has_velocity;
       }
@@ -272,13 +286,15 @@ void MapWidget::onTick() {
   if (running_ui && receiver_anim_valid_ && receiver_moved &&
       now >= next_receiver_draw_tick_) {
     do {
-      next_receiver_draw_tick_ += std::chrono::milliseconds(33);
+      next_receiver_draw_tick_ += std::chrono::milliseconds(16);
     } while (next_receiver_draw_tick_ <= now);
     update(osm_rect);
     update(map_rect);
   }
 
   const bool tx_active_now = g_tx_active.load();
+  const bool crossbow_staging_panel =
+      running_ui && (interference_selection == 2) && !tx_active_now;
   if (!running_ui) {
     last_tx_active = false;
   } else if (tx_active_now != last_tx_active) {
@@ -380,7 +396,11 @@ void MapWidget::onTick() {
       update(map_rect);
     }
 
-    if (running_ui) {
+    if (crossbow_staging_panel) {
+      if (time_dirty || scene_dirty || spec_draw_tick || waterfall_dirty) {
+        update(bottom_right_rect);
+      }
+    } else if (running_ui) {
       static long long last_runtime_sec = -1;
       long long runtime_sec = 0;
       {
@@ -483,34 +503,26 @@ void MapWidget::draw_map_panel(QPainter &p, const QRect &map_rect) {
     st = g_ctrl;
   }
 
-  const bool crossbow_running = st.running_ui && (st.interference_selection == 2);
-  const bool tx_active = g_tx_active.load();
-  if (!crossbow_running) {
-    p.drawImage(map_rect.topLeft(), map_panel_static_bg_);
-  }
+  p.drawImage(map_rect.topLeft(), map_panel_static_bg_);
 
   QColor color_border("#c6d4e6");
 
-  if (crossbow_running) {
-    p.save();
-    p.setRenderHint(QPainter::Antialiasing, true);
-
-    QLinearGradient radar_bg(map_rect.topLeft(), map_rect.bottomRight());
-    radar_bg.setColorAt(0.0, QColor("#06111d"));
-    radar_bg.setColorAt(0.55, QColor("#081823"));
-    radar_bg.setColorAt(1.0, QColor("#041019"));
-    p.fillRect(map_rect, radar_bg);
-
-    QColor radar_grid(64, 168, 94, 120);
-    QColor radar_border(125, 211, 252, 180);
-    QColor radar_text("#dbeafe");
-    QColor radar_dim("#8ab4f8");
-
-    const QRect radar_rect = map_rect.adjusted(14, 24, -14, -14);
+    const bool show_crossbow_radar =
+      st.running_ui && (st.interference_selection == 2);
+  if (show_crossbow_radar) {
+    const QRect radar_rect = map_rect.adjusted(8, 8, -8, -8);
     const QPoint c = radar_rect.center();
-    const int r = std::max(28, std::min(radar_rect.width(), radar_rect.height()) / 2 - 4);
+    const int r = std::max(36, std::min(radar_rect.width(), radar_rect.height()) / 2 - 16);
 
-    p.setPen(QPen(radar_grid, 1));
+    QLinearGradient panel_grad(radar_rect.topLeft(), radar_rect.bottomLeft());
+    panel_grad.setColorAt(0.0, QColor("#0c1d2f"));
+    panel_grad.setColorAt(1.0, QColor("#071321"));
+    p.setPen(Qt::NoPen);
+    p.setBrush(panel_grad);
+    p.drawRoundedRect(radar_rect, 10, 10);
+
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(QPen(QColor(64, 168, 94, 125), 1));
     p.setBrush(Qt::NoBrush);
     p.drawEllipse(c, r, r);
     p.drawEllipse(c, (int)std::llround(r * 0.66), (int)std::llround(r * 0.66));
@@ -518,166 +530,145 @@ void MapWidget::draw_map_panel(QPainter &p, const QRect &map_rect) {
     p.drawLine(c.x() - r, c.y(), c.x() + r, c.y());
     p.drawLine(c.x(), c.y() - r, c.x(), c.y() + r);
 
-    const double max_range_m = 100.0;
-    const double ring_marks[] = {10.0, 25.0, 50.0, 100.0};
+    const double max_range_m = 300.0;
+    const double ring_marks[] = {25.0, 50.0, 100.0, 200.0, 300.0};
     for (double m : ring_marks) {
       const double rr = (m / max_range_m) * r;
       const int rp = (int)std::llround(std::max(3.0, rr));
       p.setPen(QPen(QColor(46, 204, 113, m >= 100.0 ? 140 : 110), 1,
                     m == 25.0 ? Qt::DashLine : Qt::SolidLine));
       p.drawEllipse(c, rp, rp);
-      p.setPen(QColor(132, 229, 166, 185));
-      p.drawText(c.x() + rp + 4, c.y() - 2, QString("%1m").arg((int)m));
     }
 
-    const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
-    const double sweep_rad = (double)(now_ms % 4000) / 4000.0 * 2.0 * M_PI;
-    for (int i = 0; i < 12; ++i) {
-      const double a = sweep_rad - (double)i * (M_PI / 32.0);
-      const int alpha = std::max(15, 130 - i * 10);
-      p.setPen(QPen(QColor(40, 255, 120, alpha), i == 0 ? 2.2 : 1.2));
-      const int ex = c.x() + (int)std::llround(std::cos(a) * r);
-      const int ey = c.y() + (int)std::llround(std::sin(a) * r);
-      p.drawLine(c, QPoint(ex, ey));
-    }
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setRenderHint(QPainter::TextAntialiasing, true);
 
-    p.setPen(radar_text);
-    QFont old_font = p.font();
-    QFont title_font = old_font;
-    title_font.setBold(true);
-    p.setFont(title_font);
-    p.drawText(QRect(map_rect.x() + 14, map_rect.y() + 8,
-                     map_rect.width() - 28, 20),
-               Qt::AlignLeft | Qt::AlignVCenter, "Crossbow Radar");
-
-    // Flow strip: makes START/LAUNCH/TX phase explicit without guessing.
-    auto draw_chip = [&](const QRect &rc, const QString &txt, const QColor &fill,
-                         const QColor &stroke) {
-      p.setPen(QPen(stroke, 1));
-      p.setBrush(fill);
-      p.drawRoundedRect(rc, 9, 9);
-      p.setPen(QColor("#e5e7eb"));
-      p.drawText(rc.adjusted(8, 0, -8, 0), Qt::AlignCenter, txt);
-    };
-
-    const int chip_h = 22;
-    int chip_x = map_rect.x() + 14;
-    const int chip_y = map_rect.y() + 30;
-    draw_chip(QRect(chip_x, chip_y, 88, chip_h),
-              QString("DETECT ON"),
-              QColor(15, 118, 110, 180), QColor(45, 212, 191, 210));
-    chip_x += 96;
-    if (tx_active) {
-      draw_chip(QRect(chip_x, chip_y, 84, chip_h),
-                QString("TX LIVE"),
-                QColor(185, 28, 28, 180), QColor(252, 165, 165, 220));
-    } else {
-      draw_chip(QRect(chip_x, chip_y, 116, chip_h),
-                QString("WAIT LAUNCH"),
-                QColor(30, 64, 175, 170), QColor(96, 165, 250, 220));
-    }
-          p.setPen(QColor("#94a3b8"));
-          p.drawText(QRect(map_rect.x() + 14, map_rect.y() + 54, map_rect.width() - 28, 16),
-                 Qt::AlignLeft | Qt::AlignVCenter,
-                 QString("Flow: START -> DETECT -> LAUNCH -> TX"));
-
-    int hostile_count = 0;
-    int wifi_count = 0;
-    int nan_count = 0;
-    int ble_count = 0;
-    int dji_count = 0;
     if (dji_detect_mgr_) {
-      const auto dots = dji_detect_mgr_->targets_snapshot();
-      for (const auto &t : dots) {
-        const bool drawable_target =
-            ((!t.whitelisted) && t.has_bearing && t.has_distance && t.distance_m > 0.0 &&
-             (t.confirmed_dji || t.source == QStringLiteral("aoa-passive") ||
-              t.source == QStringLiteral("bt-le-rid") ||
-              t.source == QStringLiteral("wifi-nan-rid") ||
-              t.source == QStringLiteral("wifi-rid")));
-        if (!drawable_target)
-          continue;
+      const auto snap = dji_detect_mgr_->targets_snapshot();
+      auto bearing_from_to_deg = [](double lat0, double lon0, double lat1, double lon1) {
+        const double to_rad = M_PI / 180.0;
+        const double to_deg = 180.0 / M_PI;
+        const double phi1 = lat0 * to_rad;
+        const double phi2 = lat1 * to_rad;
+        const double dlon = (lon1 - lon0) * to_rad;
+        const double y = std::sin(dlon) * std::cos(phi2);
+        const double x = std::cos(phi1) * std::sin(phi2) -
+                         std::sin(phi1) * std::cos(phi2) * std::cos(dlon);
+        double brg = std::atan2(y, x) * to_deg;
+        if (brg < 0.0) brg += 360.0;
+        return brg;
+      };
 
-        hostile_count++;
-        if (t.source == QStringLiteral("wifi-rid")) {
-          wifi_count++;
-        } else if (t.source == QStringLiteral("wifi-nan-rid")) {
-          nan_count++;
-        } else if (t.source == QStringLiteral("bt-le-rid")) {
-          ble_count++;
-        } else if (t.confirmed_dji || t.source == QStringLiteral("aoa-passive")) {
-          dji_count++;
+      for (const auto &t : snap) {
+        double used_bearing = t.bearing_deg;
+        double used_distance = t.distance_m;
+        bool used_has_bearing = t.has_bearing;
+        bool used_has_distance = t.has_distance;
+        if (t.has_geo && receiver_valid) {
+          used_distance = distance_m_approx(receiver_lat, receiver_lon,
+                                            t.drone_lat, t.drone_lon);
+          used_bearing = bearing_from_to_deg(receiver_lat, receiver_lon,
+                                             t.drone_lat, t.drone_lon);
+          used_has_bearing = std::isfinite(used_bearing);
+          used_has_distance = std::isfinite(used_distance) && used_distance > 0.0;
         }
-        const double norm = std::max(0.0, std::min(1.0, t.distance_m / max_range_m));
+
+        const long long now_epoch_ms = (long long)std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::system_clock::now().time_since_epoch()).count();
+        const long long age_ms_raw = now_epoch_ms - (long long)t.last_seen_ms;
+        const long long age_ms = std::max(0LL, std::min(2000LL, age_ms_raw));
+        if (t.has_velocity && used_has_bearing && used_has_distance && age_ms > 0) {
+          const double age_s = (double)age_ms * 0.001;
+          const double speed_mps = std::max(0.0, std::min(80.0, t.speed_mps));
+          const double hdg_rad = t.heading_deg * M_PI / 180.0;
+          const double brg_rad = used_bearing * M_PI / 180.0;
+
+          // Convert polar target to local NE frame, forward-predict by speed*age.
+          double n = used_distance * std::cos(brg_rad);
+          double e = used_distance * std::sin(brg_rad);
+          n += std::cos(hdg_rad) * speed_mps * age_s;
+          e += std::sin(hdg_rad) * speed_mps * age_s;
+
+          used_distance = std::sqrt(n * n + e * e);
+          used_bearing = std::atan2(e, n) * 180.0 / M_PI;
+          if (used_bearing < 0.0) used_bearing += 360.0;
+          used_has_bearing = std::isfinite(used_bearing);
+          used_has_distance = std::isfinite(used_distance) && used_distance > 0.0;
+        }
+
+        if (t.whitelisted || !used_has_bearing || !used_has_distance || used_distance <= 0.0) {
+          continue;
+        }
+        const bool drawable_target =
+            (t.confirmed_dji || t.source == QStringLiteral("aoa-passive") ||
+             t.source == QStringLiteral("bt-le-rid") ||
+             t.source == QStringLiteral("ble-rid") ||
+             t.source == QStringLiteral("wifi-nan-rid") ||
+             t.source == QStringLiteral("wifi-rid"));
+        if (!drawable_target) {
+          continue;
+        }
+
+        const double norm = std::max(0.0, std::min(1.0, used_distance / max_range_m));
         const double rr = std::max(6.0, (1.0 - norm) * r);
-        const double ang = (t.bearing_deg - 90.0) * M_PI / 180.0;
+        const double ang = (used_bearing - 90.0) * M_PI / 180.0;
         const int x = c.x() + (int)std::llround(std::cos(ang) * rr);
         const int y = c.y() + (int)std::llround(std::sin(ang) * rr);
 
+        const QColor point_color =
+            (t.confirmed_dji || t.source == QStringLiteral("aoa-passive"))
+                ? QColor(255, 85, 85, 230)
+                : ((t.source == QStringLiteral("wifi-rid") ||
+                    t.source == QStringLiteral("wifi-nan-rid"))
+                       ? QColor(132, 204, 22, 220)
+                       : QColor(56, 189, 248, 230));
         p.setPen(Qt::NoPen);
-        const QColor target_color =
-            t.confirmed_dji ? QColor(255, 85, 85, 230)
-            : (t.source == QStringLiteral("aoa-passive")
-                   ? QColor(251, 191, 36, 230)
-               : (t.source == QStringLiteral("wifi-rid")
-                 ? QColor(132, 204, 22, 230)
-                 : (t.source == QStringLiteral("wifi-nan-rid")
-                    ? QColor(20, 184, 166, 230)
-                    : QColor(56, 189, 248, 230))));
-        p.setBrush(target_color);
-        p.drawEllipse(QPoint(x, y), 5, 5);
+        p.setBrush(point_color);
+        p.drawEllipse(QPoint(x, y), 4, 4);
 
-        if (t.has_velocity && t.speed_mps > 0.2) {
-          const double tail = std::min(18.0, 2.0 + t.speed_mps * 1.2);
-          const int tx = x - (int)std::llround(std::cos(ang) * tail);
-          const int ty = y - (int)std::llround(std::sin(ang) * tail);
-          p.setPen(QPen(target_color.lighter(115), 1.1));
-          p.drawLine(QPoint(x, y), QPoint(tx, ty));
+        if (t.confirmed_dji || t.source == QStringLiteral("wifi-rid") ||
+            t.source == QStringLiteral("wifi-nan-rid") ||
+            t.source == QStringLiteral("bt-le-rid") ||
+            t.source == QStringLiteral("ble-rid")) {
+          p.setPen(QColor(196, 255, 223, 210));
+          QFont old_target_font = p.font();
+          QFont target_font = old_target_font;
+          target_font.setPointSize(std::max(8, old_target_font.pointSize() - 1));
+          p.setFont(target_font);
+          const QString tag = QStringLiteral("%1m %2ms")
+                                  .arg((int)std::llround(used_distance))
+                                  .arg((int)age_ms);
+          p.drawText(x + 6, y - 6, tag);
+          p.setFont(old_target_font);
         }
       }
     }
 
-    // Source legend improves tactical interpretation speed.
-    const int legend_y = map_rect.bottom() - 52;
-    int legend_x = map_rect.x() + 16;
-    auto draw_legend_item = [&](const QColor &col, const QString &txt) {
-      p.setPen(Qt::NoPen);
-      p.setBrush(col);
-      p.drawEllipse(QPoint(legend_x + 5, legend_y + 6), 4, 4);
-      p.setPen(QColor("#cbd5e1"));
-      p.drawText(QRect(legend_x + 12, legend_y - 2, 120, 16),
-                 Qt::AlignLeft | Qt::AlignVCenter, txt);
-      legend_x += 102;
-    };
-    draw_legend_item(QColor(255, 85, 85, 230), QString("DJI/AoA"));
-    draw_legend_item(QColor(56, 189, 248, 230), QString("BLE RID"));
-    draw_legend_item(QColor(132, 204, 22, 230), QString("Wi-Fi RID"));
-    draw_legend_item(QColor(20, 184, 166, 230), QString("Wi-Fi NAN"));
-
-    p.setFont(old_font);
-    p.setPen(hostile_count > 0 ? QColor(252, 165, 165) : radar_dim);
-    p.drawText(QRect(map_rect.x() + 14, map_rect.bottom() - 28,
-                     map_rect.width() - 28, 18),
+    p.setPen(QColor("#8ab4f8"));
+    QFont old_font = p.font();
+    QFont title_font = old_font;
+    title_font.setPointSize(std::max(10, old_font.pointSize() + 1));
+    title_font.setBold(true);
+    p.setFont(title_font);
+    p.drawText(QRect(radar_rect.x() + 10, radar_rect.y() + 8,
+                     radar_rect.width() - 20, 20),
                Qt::AlignLeft | Qt::AlignVCenter,
-               hostile_count > 0 ? QString("Targets: %1").arg(hostile_count)
-                                 : QString("No target"));
-    p.setPen(QColor("#93c5fd"));
-    p.drawText(QRect(map_rect.x() + 14, map_rect.bottom() - 28,
-                     map_rect.width() - 28, 18),
-                 Qt::AlignRight | Qt::AlignVCenter,
-                 QString("DJI:%1  BLE:%2  WiFi:%3  NAN:%4")
-                   .arg(dji_count)
-                   .arg(ble_count)
-                   .arg(wifi_count)
-                   .arg(nan_count));
-    p.restore();
-  } else {
-    map_draw_satellite_layer(p, map_rect, sats_, st, g_active_prn_mask, MAX_SAT,
-                             receiver_valid, receiver_lat,
-                             receiver_lon, ui_language_);
+           QStringLiteral("Radar"));
+    p.setFont(old_font);
+    p.setRenderHint(QPainter::Antialiasing, false);
+
+    p.setPen(QPen(color_border, 1));
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(map_rect.adjusted(0, 0, -1, -1), 10, 10);
+    return;
   }
+
+  map_draw_satellite_layer(p, map_rect, sats_, st, g_active_prn_mask, MAX_SAT,
+                           receiver_valid, receiver_lat,
+                           receiver_lon, ui_language_);
 
   p.setPen(QPen(color_border, 1));
   p.setBrush(Qt::NoBrush);
   p.drawRoundedRect(map_rect.adjusted(0, 0, -1, -1), 10, 10);
 }
+#endif // MAIN_GUI_WIDGET_METHODS_INL_CONTEXT

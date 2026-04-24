@@ -1,3 +1,7 @@
+#ifndef MAP_WIDGET_UI_METHODS_INL_CONTEXT
+// This .inl requires MapWidget declarations from main_gui.cpp include context.
+// Parsed standalone by IDE diagnostics it emits false errors; leave this branch empty.
+#else
 void MapWidget::begin_inline_edit(int field_id) {
   if (!inline_editor_)
     return;
@@ -31,7 +35,8 @@ void MapWidget::begin_inline_edit(int field_id) {
     sr = lo.cn0_slider;
     break;
   case CTRL_SLIDER_SEED:
-    return;
+    sr = lo.seed_slider;
+    break;
   case CTRL_SLIDER_PRN:
     sr = lo.prn_slider;
     break;
@@ -322,3 +327,4 @@ void MapWidget::issue_place_search(const QString &query, bool from_suggest) {
   reply->setProperty("search_query", trimmed);
   reply->setProperty("search_suggest", from_suggest);
 }
+#endif // MAP_WIDGET_UI_METHODS_INL_CONTEXT

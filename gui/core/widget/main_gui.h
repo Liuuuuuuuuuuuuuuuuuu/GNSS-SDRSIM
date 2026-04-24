@@ -5,6 +5,7 @@
 extern "C" {
 #endif
 
+#include <stddef.h>
 #include "bdssim.h"
 
 void start_map_gui(double start_bdt);
@@ -27,7 +28,12 @@ void* map_gui_get_dji_detect_manager(void);
 void map_gui_set_selected_llh(double lat_deg, double lon_deg, double h_m);
 void map_gui_set_selected_llh_centered(double lat_deg, double lon_deg,
 									   double h_m);void map_gui_set_location_auto_zoom(double lat_deg, double lon_deg, double h_m);int map_gui_get_preview_prn(void);
+void map_gui_set_selected_altitude(double h_m);
 int map_gui_consume_selected_llh(double *lat_deg, double *lon_deg, double *h_m);
+int map_gui_consume_wifi_rid_allow_ids(char *csv, size_t csv_sz);
+int map_gui_consume_wifi_rid_block_ids(char *csv, size_t csv_sz);
+int map_gui_consume_wifi_rid_mixed_mode(int *enabled);
+int map_gui_consume_crossbow_unlock_request(void);
 int map_gui_get_default_spoof_llh(double *lat_deg, double *lon_deg, double *h_m);
 int map_gui_consume_start_request(void);
 int map_gui_consume_launch_request(void);
@@ -37,6 +43,7 @@ void map_gui_notify_path_segment_started(void);
 void map_gui_notify_path_segment_finished(void);
 void map_gui_notify_path_segment_undo(void);
 void map_gui_clear_path_segments(void);
+void map_gui_reset_interaction_state(void);
 void map_gui_pump_events(void);
 void map_gui_push_alert(int level, const char *message);
 
