@@ -9,6 +9,7 @@
 #include "gui/map/osm/map_tile_utils.h"
 #include "gui/geo/osm_projection.h"
 
+#include <QDateTime>
 #include <QPainterPath>
 
 #include <algorithm>
@@ -135,8 +136,9 @@ void map_draw_osm_panel_background(QPainter &p, const MapOsmPanelInput &in) {
       in.panel.height());
 
   for (int ty = range.ty0; ty <= range.ty1; ++ty) {
-    if (ty < 0 || ty >= range.n)
-      continue;
+    int ty_wrap = ty % range.n;
+    if (ty_wrap < 0)
+      ty_wrap += range.n;
     for (int tx = range.tx0; tx <= range.tx1; ++tx) {
       int tx_wrap = map_tile_wrap_x(tx, range.n);
       double world_x = (double)tx * 256.0;
@@ -144,7 +146,7 @@ void map_draw_osm_panel_background(QPainter &p, const MapOsmPanelInput &in) {
       int sx = in.panel.x() + (int)llround(world_x - range.left);
       int sy = in.panel.y() + (int)llround(world_y - range.top);
 
-      QString key = map_tile_key(in.osm_zoom, tx_wrap, ty, in.dark_map_mode);
+      QString key = map_tile_key(in.osm_zoom, tx_wrap, ty_wrap, in.dark_map_mode);
       if (in.tile_cache) {
         auto it = in.tile_cache->find(key);
         if (it != in.tile_cache->end()) {
@@ -152,7 +154,7 @@ void map_draw_osm_panel_background(QPainter &p, const MapOsmPanelInput &in) {
           continue;
         }
       }
-      if (draw_parent_tile_fallback(p, in, in.osm_zoom, tx_wrap, ty, sx, sy)) {
+      if (draw_parent_tile_fallback(p, in, in.osm_zoom, tx_wrap, ty_wrap, sx, sy)) {
         continue;
       }
       // Missing tile: fill without border so no grid lines show.
@@ -169,6 +171,7 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
   if (out) {
     out->lang_btn_rect = QRect();
     out->back_btn_rect = QRect();
+    out->recenter_btn_rect = QRect();
     out->nfz_btn_rect = QRect();
     out->dark_mode_btn_rect = QRect();
     out->tutorial_toggle_rect = QRect();
@@ -180,10 +183,15 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
   }
 
   if (in.nfz_enabled && in.nfz_zones && !in.nfz_zones->empty()) {
+    std::array<bool, 4> rendered_layers = {false, false, false, false};
     dji_nfz_draw(p, in.panel, *in.nfz_zones, in.osm_zoom,
                  [&](double lat, double lon, QPoint *out_pt) {
                    return draw_screen_point(in, lat, lon, out_pt);
-                 });
+                 },
+                 &rendered_layers);
+    if (out) {
+      out->nfz_layers_rendered = rendered_layers;
+    }
   }
 
   if (in.has_selected_llh) {
@@ -296,13 +304,53 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
           }
         }
       }
-      if (!has_path) {
+      if (!has_path && in.preview_mode == MapOsmPanelSegment::PathMode::Line) {
         path.moveTo(a);
         path.lineTo(b);
         has_path = true;
       }
       if (has_path)
         p.drawPath(path);
+
+      const bool show_plan_loading_anim =
+          (in.preview_mode == MapOsmPanelSegment::PathMode::Plan) &&
+          !in.preview_plan_route_ready;
+      if (show_plan_loading_anim) {
+        // Smart-route pending: animate from anchor to target so users see
+        // immediate directional feedback instead of a static label.
+        p.setRenderHint(QPainter::Antialiasing, true);
+        const qint64 now_ms = QDateTime::currentMSecsSinceEpoch();
+        const double phase = (double)(now_ms % 900) / 900.0;
+
+        const QPointF p0((double)a.x(), (double)a.y());
+        const QPointF p1((double)b.x(), (double)b.y());
+        const QPointF dir = p1 - p0;
+        const QPointF head = p0 + dir * phase;
+
+        // Base guide line.
+        p.setPen(QPen(QColor(251, 191, 36, 120), 2.0, Qt::DashLine,
+                      Qt::RoundCap, Qt::RoundJoin));
+        p.setBrush(Qt::NoBrush);
+        p.drawLine(p0, p1);
+
+        // Progress segment from anchor to animated head.
+        p.setPen(QPen(QColor(251, 191, 36, 225), 3.2, Qt::SolidLine,
+                      Qt::RoundCap, Qt::RoundJoin));
+        p.drawLine(p0, head);
+
+        // Moving pulse.
+        p.setPen(Qt::NoPen);
+        p.setBrush(QColor(253, 224, 71, 210));
+        p.drawEllipse(head, 6.0, 6.0);
+        p.setBrush(QColor(253, 224, 71, 80));
+        p.drawEllipse(head, 12.0, 12.0);
+
+        // Target keep-alive ring.
+        p.setPen(QPen(QColor(251, 191, 36, 200), 1.8, Qt::DashLine));
+        p.setBrush(Qt::NoBrush);
+        p.drawEllipse(p1, 9.0, 9.0);
+        p.setRenderHint(QPainter::Antialiasing, false);
+      }
 
       p.setPen(Qt::NoPen);
       p.setBrush(c);
@@ -400,10 +448,13 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
   controls_in.panel = in.panel;
   controls_in.language = in.language;
   controls_in.running_ui = in.running_ui;
+  controls_in.receiver_valid = in.receiver_valid;
+  controls_in.receiver_lat_deg = in.receiver_lat_deg;
+  controls_in.receiver_lon_deg = in.receiver_lon_deg;
   controls_in.can_undo = in.can_undo;
   controls_in.dji_on = in.nfz_enabled;
-  controls_in.show_range_cap_legend =
-      in.running_ui && in.has_selected_llh && !in.jam_selected;
+  controls_in.nfz_layers_rendered = in.nfz_layers_rendered;
+  controls_in.show_range_cap_legend = false;
   controls_in.dark_map_mode = in.dark_map_mode;
   controls_in.tutorial_enabled = in.tutorial_enabled;
   controls_in.tutorial_hovered = in.tutorial_hovered;
@@ -419,6 +470,7 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
   if (out) {
     out->lang_btn_rect = controls_out.lang_btn_rect;
     out->back_btn_rect = controls_out.back_btn_rect;
+    out->recenter_btn_rect = controls_out.recenter_btn_rect;
     out->nfz_btn_rect = controls_out.nfz_btn_rect;
     out->dark_mode_btn_rect = controls_out.dark_mode_btn_rect;
     out->tutorial_toggle_rect = controls_out.tutorial_toggle_rect;
@@ -452,6 +504,38 @@ void map_draw_osm_panel_overlay(QPainter &p, const MapOsmPanelInput &in,
                              in.running_ui, lines, &badge_rects);
   if (out) {
     out->status_badge_rects = std::move(badge_rects);
+  }
+
+  if (in.nfz_enabled && in.show_nfz_diag) {
+    const QString nfz_diag = QString("NFZ: fetched %1 / visible %2")
+                                 .arg(std::max(0, in.dji_nfz_fetched_count))
+                                 .arg(std::max(0, in.dji_nfz_visible_count));
+    QFont old_font = p.font();
+    QFont diag_font = old_font;
+    diag_font.setBold(true);
+    diag_font.setPointSize(std::max(9, old_font.pointSize()));
+    p.setFont(diag_font);
+
+    const QFontMetrics fm(diag_font);
+    const int pad_x = 8;
+    const int pad_y = 4;
+    const int w = fm.horizontalAdvance(nfz_diag) + pad_x * 2;
+    const int h = fm.height() + pad_y * 2;
+    const int x = in.panel.right() - w - 10;
+    int y = in.panel.bottom() - h - 12;
+    if (!controls_out.nfz_legend_row_rects.empty()) {
+      y = std::max(in.panel.y() + 12, controls_out.nfz_legend_row_rects.front().y() - h - 12);
+    }
+    const QRect box(x, y, w, h);
+
+    p.setRenderHint(QPainter::Antialiasing, true);
+    p.setPen(QPen(QColor(96, 165, 250, 190), 1.0));
+    p.setBrush(QColor(8, 16, 28, 176));
+    p.drawRoundedRect(box, 7, 7);
+    p.setPen(QColor(191, 219, 254));
+    p.drawText(box, Qt::AlignCenter, nfz_diag);
+    p.setRenderHint(QPainter::Antialiasing, false);
+    p.setFont(old_font);
   }
 
   if (in.jam_selected) {

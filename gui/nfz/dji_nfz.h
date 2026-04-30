@@ -6,6 +6,7 @@
 #include <QPainter>
 #include <QRect>
 #include <functional>
+#include <array>
 
 // 宣告 Qt 類別 (減少 include 負擔)
 class QNetworkAccessManager;
@@ -40,6 +41,16 @@ struct DjiNfzZone {
     double center_lat;
     double center_lon;
     double radius_m;
+
+    // Cached geometry metadata used by hit-testing/perf-critical lookups.
+    bool has_outer_bbox = false;
+    double outer_min_lat = 0.0;
+    double outer_max_lat = 0.0;
+    double outer_min_lon = 0.0;
+    double outer_max_lon = 0.0;
+    bool has_cached_center = false;
+    double cached_center_lat = 0.0;
+    double cached_center_lon = 0.0;
 };
 
 // 獨立的 API 管理器類別
@@ -74,6 +85,7 @@ private:
 
 // 繪製工具函式 (解耦：將經緯度轉換交由外部 lambda 處理)
 void dji_nfz_draw(QPainter& p, const QRect& panel, const std::vector<DjiNfzZone>& zones, int zoom,
-                  std::function<bool(double lat, double lon, QPoint* out)> coord_to_screen_fn);
+                  std::function<bool(double lat, double lon, QPoint* out)> coord_to_screen_fn,
+                  std::array<bool, 4>* out_rendered_layers = nullptr);
 
 #endif // DJI_NFZ_H

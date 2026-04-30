@@ -430,6 +430,7 @@ void MapWidget::mousePressEvent(QMouseEvent *event) {
     rects.search_return_btn_rect = search_return_btn_rect_;
     rects.nfz_btn_rect = nfz_btn_rect_;
     rects.back_btn_rect = back_btn_rect_;
+    rects.recenter_btn_rect = osm_recenter_btn_rect_;
     rects.nfz_legend_row_rects = osm_nfz_legend_row_rects_;
     rects.show_search_return = show_search_return_;
 
@@ -453,10 +454,12 @@ void MapWidget::mousePressEvent(QMouseEvent *event) {
         g_ctrl.running_ui = false;
       }
       g_runtime_abort = 1;
+      g_gui_reset_waterfall_req.fetch_add(1);
       g_gui_stop_req.fetch_add(1);
       osm_bg_needs_redraw_ = true;
     };
     actions.launch_signal = [this]() {
+      map_gui_reset_monitor_views();
       g_gui_launch_req.fetch_add(1);
       osm_bg_needs_redraw_ = true;
     };
@@ -487,6 +490,30 @@ void MapWidget::mousePressEvent(QMouseEvent *event) {
       osm_bg_needs_redraw_ = true;
     };
     actions.try_undo_last_segment = [this]() { try_undo_last_segment(); };
+    actions.recenter_to_current_point = [this]() {
+      if (fit_paths_into_view()) {
+        request_visible_tiles();
+        notify_nfz_viewport_changed();
+        osm_bg_needs_redraw_ = true;
+        update(osm_panel_rect_);
+        return;
+      }
+      if (!(receiver_anim_valid_ || (g_receiver_valid != 0))) {
+        return;
+      }
+      const double now_lat = receiver_anim_valid_ ? receiver_anim_lat_deg_ : g_receiver_lat_deg;
+      const double now_lon = receiver_anim_valid_ ? receiver_anim_lon_deg_ : g_receiver_lon_deg;
+      if (now_lat < -90.0 || now_lat > 90.0 || now_lon < -180.0 || now_lon > 180.0) {
+        return;
+      }
+      osm_center_px_x_ = osm_lon_to_world_x(now_lon, osm_zoom_);
+      osm_center_px_y_ = osm_lat_to_world_y(now_lat, osm_zoom_);
+      normalize_osm_center();
+      request_visible_tiles();
+      notify_nfz_viewport_changed();
+      osm_bg_needs_redraw_ = true;
+      update(osm_panel_rect_);
+    };
     actions.confirm_preview_segment = [this]() { confirm_preview_segment(); };
     actions.update_all = [this]() {
       update(osm_panel_rect_);
@@ -630,11 +657,70 @@ void MapWidget::mouseMoveEvent(QMouseEvent *event) {
             user_map_interacted_ = true;
             normalize_osm_center();
           },
-          [this]() { request_visible_tiles(); },
-          [this]() { notify_nfz_viewport_changed(); },
+          [this]() {
+            const auto now_tp = std::chrono::steady_clock::now();
+            if (last_tile_request_tp_ == std::chrono::steady_clock::time_point{} ||
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now_tp - last_tile_request_tp_)
+                        .count() >= tile_request_throttle_ms_) {
+              last_tile_request_tp_ = now_tp;
+              request_visible_tiles();
+            }
+          },
+          [this]() {
+            const auto now_tp = std::chrono::steady_clock::now();
+            if (last_nfz_fetch_tp_ == std::chrono::steady_clock::time_point{} ||
+                std::chrono::duration_cast<std::chrono::milliseconds>(
+                    now_tp - last_nfz_fetch_tp_)
+                        .count() >= nfz_fetch_throttle_ms_) {
+              last_nfz_fetch_tp_ = now_tp;
+              notify_nfz_viewport_changed();
+            }
+          },
           [this](const QRect &rect) { update(rect); })) {
     event->accept();
     return;
+  }
+
+  {
+    bool running_ui = false;
+    {
+      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
+      running_ui = g_ctrl.running_ui;
+    }
+    if (running_ui && !is_jam_map_locked() && osm_panel_rect_.contains(event->pos()) &&
+        !(event->buttons() & Qt::LeftButton) && !dragging_osm_) {
+      static std::chrono::steady_clock::time_point s_last_prefetch_tp{};
+      static QPoint s_last_prefetch_pos(-100000, -100000);
+
+      const auto now_tp = std::chrono::steady_clock::now();
+      const bool time_ok =
+          s_last_prefetch_tp == std::chrono::steady_clock::time_point{} ||
+          std::chrono::duration_cast<std::chrono::milliseconds>(
+              now_tp - s_last_prefetch_tp)
+              .count() >= 70;
+      const bool move_ok =
+          std::abs(event->pos().x() - s_last_prefetch_pos.x()) +
+              std::abs(event->pos().y() - s_last_prefetch_pos.y()) >=
+          10;
+
+      if (time_ok && move_ok) {
+        double lat = 0.0;
+        double lon = 0.0;
+        double slat = 0.0;
+        double slon = 0.0;
+        if (panel_point_to_llh(event->pos(), &lat, &lon) &&
+            get_current_plan_anchor(&slat, &slon)) {
+          const double hover_dist_m =
+              distance_m_approx(slat, slon, lat, lon);
+          if (hover_dist_m >= 8.0) {
+            start_route_prefetch(slat, slon, lat, lon);
+            s_last_prefetch_tp = now_tp;
+            s_last_prefetch_pos = event->pos();
+          }
+        }
+      }
+    }
   }
   QWidget::mouseMoveEvent(event);
 }
@@ -699,6 +785,12 @@ void MapWidget::mouseReleaseEvent(QMouseEvent *event) {
             [this](const QRect &rect) { update(rect); })) {
       event->accept();
       return;
+    }
+    if (drag_moved_osm_) {
+      request_visible_tiles();
+      notify_nfz_viewport_changed();
+      osm_bg_needs_redraw_ = true;
+      update(osm_panel_rect_);
     }
     dragging_osm_ = false;
   }
@@ -792,6 +884,7 @@ void MapWidget::closeEvent(QCloseEvent *event) {
     g_ctrl.running_ui = false;
   }
   g_runtime_abort = 1;
+  g_gui_reset_waterfall_req.fetch_add(1);
   g_gui_stop_req.fetch_add(1);
   g_gui_exit_req.fetch_add(1);
   g_running.store(false);

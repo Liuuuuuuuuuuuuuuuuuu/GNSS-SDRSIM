@@ -33,19 +33,20 @@ void MapWidget::refresh_tick_timer() {
     }
 
     const bool map_busy = dragging_osm_ || !tile_pending_.empty();
+    const bool animating = has_preview_segment_ || crossbow_has_mouse_;
 
     if (tutorial_overlay_visible_) {
       // Keep tutorial animation smooth at baseline 60Hz cadence.
       interval_ms = 16;
-    } else if (startup_boost || map_busy) {
-      // Startup/tile fill keeps the same 16ms cadence for consistent sweep timing.
-      interval_ms = 16;
+    } else if (startup_boost || map_busy || animating) {
+      // High-motion/map-fill path: ~100Hz for smoother map/path animation.
+      interval_ms = 10;
     } else if (running_ui && interference_selection == 2) {
-      // Crossbow radar mode: 16ms cadence (~60Hz).
-      interval_ms = 16;
+      // Crossbow radar mode: ~83Hz.
+      interval_ms = 12;
     } else if (running_ui) {
-      // Active runtime view: 16ms cadence (~60Hz).
-      interval_ms = 16;
+      // Active runtime view: ~83Hz, still bounded to reduce signal impact.
+      interval_ms = 12;
     } else {
       // Idle view keeps the same baseline cadence.
       interval_ms = 16;
@@ -252,11 +253,19 @@ void MapWidget::on_control_gear_click() {
   control_gear_tap_last_tp_ = now;
 
   if (control_gear_tap_count_ == 6) {
-    map_gui_push_alert(
-        0,
-        gui_language_is_zh_tw(ui_language_)
-            ? "偵測功能準備中，再連點 4 下齒輪可啟用 CROSSBOW"
-            : "Detection prep ready. Tap gear 4 more times to unlock CROSSBOW");
+    if (!nfz_diag_visible_) {
+      map_gui_push_alert(
+          0,
+          gui_language_is_zh_tw(ui_language_)
+              ? "NFZ 診斷已就緒，再連點 4 下齒輪即可顯示"
+              : "NFZ diagnostics ready. Tap gear 4 more times to reveal");
+    } else {
+      map_gui_push_alert(
+          0,
+          gui_language_is_zh_tw(ui_language_)
+              ? "偵測功能準備中，再連點 4 下齒輪可啟用 CROSSBOW"
+              : "Detection prep ready. Tap gear 4 more times to unlock CROSSBOW");
+    }
   }
 
   if (control_gear_tap_count_ >= 10) {
@@ -265,6 +274,18 @@ void MapWidget::on_control_gear_click() {
     }
     control_gear_tap_count_ = 0;
     control_gear_tap_last_tp_ = std::chrono::steady_clock::time_point{};
+
+    if (!nfz_diag_visible_) {
+      nfz_diag_visible_ = true;
+      map_gui_push_alert(
+          0,
+          gui_language_is_zh_tw(ui_language_)
+              ? "NFZ 診斷資訊已啟用"
+              : "NFZ diagnostics enabled");
+      update(osm_panel_rect_);
+      return;
+    }
+
     request_crossbow_unlock_with_sudo_prompt();
     return;
   }
@@ -283,6 +304,10 @@ void MapWidget::open_control_style_dialog() {
   const QColor original_border = control_border_color_;
   const QColor original_text = control_text_color_;
   const QColor original_dim = control_dim_text_color_;
+  const QColor original_wave_spectrum = wave_spectrum_color_;
+  const QColor original_wave_time_q = wave_time_q_color_;
+  const QColor original_wave_time_i = wave_time_i_color_;
+  const QColor original_wave_constellation = wave_constellation_color_;
   ControlElementAppearanceOverride
       original_element_appearance_overrides[CTRL_LAYOUT_ELEMENT_COUNT];
   for (int i = 0; i < CTRL_LAYOUT_ELEMENT_COUNT; ++i) {
@@ -353,6 +378,42 @@ void MapWidget::open_control_style_dialog() {
     preview_widget->build_element_appearance_overrides =
       [&]() { return preview_element_appearance_overrides; };
 
+  SpectrumSnapshot preview_spec{};
+  preview_spec.valid = 1;
+  preview_spec.time_valid = 1;
+  preview_spec.bins = GUI_SPECTRUM_BINS;
+  preview_spec.time_samples = GUI_TIME_MON_SAMPLES;
+  for (int i = 0; i < preview_spec.bins; ++i) {
+    const float t = (float)i / (float)std::max(1, preview_spec.bins - 1);
+    const float wave = 0.58f + 0.32f * std::sin(t * 9.0f)
+                       + 0.10f * std::sin(t * 37.0f);
+    preview_spec.rel_db[i] = -30.0f + std::max(0.0f, std::min(1.0f, wave)) * 30.0f;
+    preview_spec.db[i] = preview_spec.rel_db[i];
+  }
+  for (int i = 0; i < preview_spec.time_samples; ++i) {
+    const float t = (float)i / (float)std::max(1, preview_spec.time_samples - 1);
+    preview_spec.time_q[i] = 0.78f * std::sin(t * 10.0f * (float)M_PI);
+    preview_spec.time_i[i] = 0.74f * std::cos(t * 12.0f * (float)M_PI + 0.35f);
+  }
+
+  const int wf_w = 320;
+  const int wf_h = 180;
+  QImage preview_waterfall(wf_w, wf_h, QImage::Format_RGB32);
+  for (int y = 0; y < wf_h; ++y) {
+    uint32_t *row = reinterpret_cast<uint32_t *>(preview_waterfall.scanLine(y));
+    const float ny = (float)y / (float)std::max(1, wf_h - 1);
+    for (int x = 0; x < wf_w; ++x) {
+      const float nx = (float)x / (float)std::max(1, wf_w - 1);
+      const float s = 0.50f + 0.45f * std::sin(nx * 22.0f + ny * 14.0f);
+      const int r = (int)std::lround(18.0f + 38.0f * s);
+      const int g = (int)std::lround(46.0f + 128.0f * s);
+      const int b = (int)std::lround(72.0f + 168.0f * s);
+      row[x] = qRgb(std::max(0, std::min(255, r)),
+                    std::max(0, std::min(255, g)),
+                    std::max(0, std::min(255, b)));
+    }
+  }
+
   auto *sidebar_host = new QWidget(&dlg);
   sidebar_host->setFixedWidth(sidebar_w);
   auto *sidebar = new QVBoxLayout(sidebar_host);
@@ -412,6 +473,11 @@ void MapWidget::open_control_style_dialog() {
   auto *layout = new QFormLayout(style_group);
   layout->setContentsMargins(10, 10, 10, 10);
   layout->setSpacing(10);
+
+  auto *waveform_group = new QGroupBox(QStringLiteral("Waveform"), sidebar_host);
+  auto *waveform_layout = new QFormLayout(waveform_group);
+  waveform_layout->setContentsMargins(10, 10, 10, 10);
+  waveform_layout->setSpacing(10);
 
   auto *live_preview_cb = new QCheckBox(tr("style.live_preview"), &dlg);
   live_preview_cb->setChecked(true);
@@ -490,11 +556,34 @@ void MapWidget::open_control_style_dialog() {
       new QPushButton(tr("style.text_primary"), &dlg);
     auto *dim_btn = new QPushButton(tr("style.text_dim"), &dlg);
     auto *custom_btn = new QPushButton(tr("style.custom_color"), &dlg);
+  auto *wave_spectrum_btn = new QPushButton(tr("style.wave.spectrum"), &dlg);
+  auto *wave_time_q_btn = new QPushButton(tr("style.wave.time_q"), &dlg);
+  auto *wave_time_i_btn = new QPushButton(tr("style.wave.time_i"), &dlg);
+  auto *wave_constellation_btn =
+      new QPushButton(tr("style.wave.constellation"), &dlg);
 
   QColor pending_accent = control_accent_color_;
   QColor pending_border = control_border_color_;
   QColor pending_text = control_text_color_;
   QColor pending_dim = control_dim_text_color_;
+  QColor pending_wave_spectrum = wave_spectrum_color_;
+  QColor pending_wave_time_q = wave_time_q_color_;
+  QColor pending_wave_time_i = wave_time_i_color_;
+  QColor pending_wave_constellation = wave_constellation_color_;
+
+  preview_widget->build_monitor_input = [&]() {
+    MapMonitorPanelsInput in;
+    in.ctrl = preview_ctrl;
+    in.ctrl.running_ui = false;
+    in.spec_snap = preview_spec;
+    in.waterfall_image = preview_waterfall;
+    in.language = ui_language_;
+    in.spectrum_trace_color = pending_wave_spectrum;
+    in.time_q_trace_color = pending_wave_time_q;
+    in.time_i_trace_color = pending_wave_time_i;
+    in.constellation_point_color = pending_wave_constellation;
+    return in;
+  };
 
   auto current_text_scale = [&]() {
     return std::max(0.70, std::min(1.50, (double)master_pair.second->value() / 100.0));
@@ -562,6 +651,10 @@ void MapWidget::open_control_style_dialog() {
   apply_btn_color(border_btn, pending_border);
   apply_btn_color(text_btn, pending_text);
   apply_btn_color(dim_btn, pending_dim);
+  apply_btn_color(wave_spectrum_btn, pending_wave_spectrum);
+  apply_btn_color(wave_time_q_btn, pending_wave_time_q);
+  apply_btn_color(wave_time_i_btn, pending_wave_time_i);
+  apply_btn_color(wave_constellation_btn, pending_wave_constellation);
 
   auto clear_all_element_appearance_overrides = [&]() {
     for (int i = 0; i < CTRL_LAYOUT_ELEMENT_COUNT; ++i) {
@@ -603,6 +696,14 @@ void MapWidget::open_control_style_dialog() {
       if (pending_text.isValid()) control_text_color_ = pending_text;
       if (pending_dim.isValid()) control_dim_text_color_ = pending_dim;
     }
+    if (pending_wave_spectrum.isValid())
+      wave_spectrum_color_ = pending_wave_spectrum;
+    if (pending_wave_time_q.isValid())
+      wave_time_q_color_ = pending_wave_time_q;
+    if (pending_wave_time_i.isValid())
+      wave_time_i_color_ = pending_wave_time_i;
+    if (pending_wave_constellation.isValid())
+      wave_constellation_color_ = pending_wave_constellation;
     sanitize_position_offsets();
     control_layout_overrides_ = preview_layout_overrides;
     control_slider_part_overrides_ = preview_slider_part_overrides;
@@ -727,10 +828,18 @@ void MapWidget::open_control_style_dialog() {
       pending_text = control_text_color_;
       pending_dim = control_dim_text_color_;
     }
+    pending_wave_spectrum = wave_spectrum_color_;
+    pending_wave_time_q = wave_time_q_color_;
+    pending_wave_time_i = wave_time_i_color_;
+    pending_wave_constellation = wave_constellation_color_;
     apply_btn_color(accent_btn, pending_accent);
     apply_btn_color(border_btn, pending_border);
     apply_btn_color(text_btn, pending_text);
     apply_btn_color(dim_btn, pending_dim);
+    apply_btn_color(wave_spectrum_btn, pending_wave_spectrum);
+    apply_btn_color(wave_time_q_btn, pending_wave_time_q);
+    apply_btn_color(wave_time_i_btn, pending_wave_time_i);
+    apply_btn_color(wave_constellation_btn, pending_wave_constellation);
   };
 
   connect(preview_mode_combo, QOverload<int>::of(&QComboBox::currentIndexChanged),
@@ -884,6 +993,26 @@ void MapWidget::open_control_style_dialog() {
     pick_color(pending_dim, dim_btn, tr("style.pick_text_dim"));
     trigger_live_preview();
   });
+  connect(wave_spectrum_btn, &QPushButton::clicked, &dlg, [&]() {
+    pick_color(pending_wave_spectrum, wave_spectrum_btn,
+               tr("style.pick_wave_spectrum"));
+    trigger_live_preview();
+  });
+  connect(wave_time_q_btn, &QPushButton::clicked, &dlg, [&]() {
+    pick_color(pending_wave_time_q, wave_time_q_btn,
+               tr("style.pick_wave_time_q"));
+    trigger_live_preview();
+  });
+  connect(wave_time_i_btn, &QPushButton::clicked, &dlg, [&]() {
+    pick_color(pending_wave_time_i, wave_time_i_btn,
+               tr("style.pick_wave_time_i"));
+    trigger_live_preview();
+  });
+  connect(wave_constellation_btn, &QPushButton::clicked, &dlg, [&]() {
+    pick_color(pending_wave_constellation, wave_constellation_btn,
+               tr("style.pick_wave_constellation"));
+    trigger_live_preview();
+  });
 
   connect(custom_btn, &QPushButton::clicked, &dlg, [&]() {
     QColor picked = QColorDialog::getColor(
@@ -902,6 +1031,16 @@ void MapWidget::open_control_style_dialog() {
   color_layout->addWidget(text_btn);
   color_layout->addWidget(dim_btn);
   color_layout->addWidget(custom_btn);
+
+  auto *wave_color_row = new QWidget(&dlg);
+  auto *wave_color_layout = new QGridLayout(wave_color_row);
+  wave_color_layout->setContentsMargins(0, 0, 0, 0);
+  wave_color_layout->setHorizontalSpacing(6);
+  wave_color_layout->setVerticalSpacing(6);
+  wave_color_layout->addWidget(wave_spectrum_btn, 0, 0);
+  wave_color_layout->addWidget(wave_time_q_btn, 0, 1);
+  wave_color_layout->addWidget(wave_time_i_btn, 1, 0);
+  wave_color_layout->addWidget(wave_constellation_btn, 1, 1);
 
   // -- Optional Times New Roman font variants --
   auto *font_bold_cb       = new QCheckBox(tr("style.font.times_bold"), &dlg);
@@ -945,10 +1084,18 @@ void MapWidget::open_control_style_dialog() {
     pending_border = QColor("#b9cadf");
     pending_text = QColor("#f8fbff");
     pending_dim = QColor("#6b7b90");
+    pending_wave_spectrum = QColor("#51a7ff");
+    pending_wave_time_q = QColor("#51a7ff");
+    pending_wave_time_i = QColor("#ef4444");
+    pending_wave_constellation = QColor("#51a7ff");
     apply_btn_color(accent_btn, pending_accent);
     apply_btn_color(border_btn, pending_border);
     apply_btn_color(text_btn, pending_text);
     apply_btn_color(dim_btn, pending_dim);
+    apply_btn_color(wave_spectrum_btn, pending_wave_spectrum);
+    apply_btn_color(wave_time_q_btn, pending_wave_time_q);
+    apply_btn_color(wave_time_i_btn, pending_wave_time_i);
+    apply_btn_color(wave_constellation_btn, pending_wave_constellation);
     preview_layout_overrides = ControlLayoutOverrides{};
     preview_slider_part_overrides = ControlSliderPartOverrides{};
     sanitize_position_offsets();
@@ -970,17 +1117,50 @@ void MapWidget::open_control_style_dialog() {
   layout->addRow(QString(), live_preview_cb);
   layout->addRow(QString(), reset_btn);
 
-  auto *buttons =
-      new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
+  waveform_layout->addRow(tr("style.row.waveform_colors"), wave_color_row);
+
+  auto *buttons = new QDialogButtonBox(
+      QDialogButtonBox::Ok | QDialogButtonBox::Cancel | QDialogButtonBox::Apply,
+      sidebar_host);
   connect(buttons, &QDialogButtonBox::accepted, &dlg, &QDialog::accept);
   connect(buttons, &QDialogButtonBox::rejected, &dlg, &QDialog::reject);
-  layout->addRow(buttons);
+  if (QPushButton *apply_btn = buttons->button(QDialogButtonBox::Apply)) {
+    connect(apply_btn, &QPushButton::clicked, &dlg, [&]() {
+      apply_preview();
+      font_times_bold_ = font_bold_cb->isChecked();
+      font_times_italic_ = font_italic_cb->isChecked();
+      font_times_bold_italic_ = font_bold_italic_cb->isChecked();
+      if (font_zh_kai_cb) {
+        font_zh_kai_ = font_zh_kai_cb->isChecked();
+      }
+      gui_font_set_zh_kai_enabled(font_zh_kai_);
+      gui_runtime_apply_optional_times_fonts(
+          font_times_bold_, font_times_italic_, font_times_bold_italic_);
+      gui_runtime_apply_language_font(this, ui_language_);
+      update();
+    });
+  }
 
   auto *sidebar_tabs = new QTabWidget(sidebar_host);
   sidebar_tabs->setDocumentMode(true);
   sidebar_tabs->addTab(editor_group, QStringLiteral("Layout"));
   sidebar_tabs->addTab(style_group, QStringLiteral("Appearance"));
+  const int waveform_tab_idx =
+      sidebar_tabs->addTab(waveform_group, tr("style.row.waveform_colors"));
+  connect(sidebar_tabs, &QTabWidget::currentChanged, &dlg, [&, waveform_tab_idx](int idx) {
+    preview_widget->preview_mode =
+        (idx == waveform_tab_idx)
+            ? ControlPagePreviewWidget::PreviewMode::Waveform
+            : ControlPagePreviewWidget::PreviewMode::ControlPage;
+    if (preview_widget->preview_mode == ControlPagePreviewWidget::PreviewMode::Waveform) {
+      preview_widget->selected_element = CTRL_LAYOUT_ELEMENT_NONE;
+      selected_element_label->setText(QStringLiteral("None"));
+      selected_rect_label->setText(QStringLiteral("Rect: -"));
+    }
+    render_preview();
+  });
   sidebar->addWidget(sidebar_tabs, 1);
+  sidebar->addWidget(buttons, 0);
 
   auto *body = new QWidget(&dlg);
   auto *body_layout = new QHBoxLayout(body);
@@ -1018,6 +1198,10 @@ void MapWidget::open_control_style_dialog() {
     control_border_color_ = original_border;
     control_text_color_ = original_text;
     control_dim_text_color_ = original_dim;
+    wave_spectrum_color_ = original_wave_spectrum;
+    wave_time_q_color_ = original_wave_time_q;
+    wave_time_i_color_ = original_wave_time_i;
+    wave_constellation_color_ = original_wave_constellation;
     control_layout_overrides_ = original_layout_overrides;
     control_slider_part_overrides_ = original_slider_part_overrides;
     for (int i = 0; i < CTRL_LAYOUT_ELEMENT_COUNT; ++i) {
@@ -1045,6 +1229,10 @@ void MapWidget::draw_spectrum_panel(QPainter &p, int win_width, int win_height) 
   }
   in.spec_snap = spec_snap_;
   in.language = ui_language_;
+  in.spectrum_trace_color = wave_spectrum_color_;
+  in.time_q_trace_color = wave_time_q_color_;
+  in.time_i_trace_color = wave_time_i_color_;
+  in.constellation_point_color = wave_constellation_color_;
   map_draw_spectrum_panel(p, win_width, win_height, in);
 }
 
@@ -1057,6 +1245,10 @@ void MapWidget::draw_waterfall_panel(QPainter &p, int win_width, int win_height)
   in.waterfall_image = wf_.image;
   in.spec_snap = spec_snap_;
   in.language = ui_language_;
+  in.spectrum_trace_color = wave_spectrum_color_;
+  in.time_q_trace_color = wave_time_q_color_;
+  in.time_i_trace_color = wave_time_i_color_;
+  in.constellation_point_color = wave_constellation_color_;
   map_draw_waterfall_panel(p, win_width, win_height, in);
 }
 
@@ -1068,6 +1260,10 @@ void MapWidget::draw_time_panel(QPainter &p, int win_width, int win_height) {
   }
   in.spec_snap = spec_snap_;
   in.language = ui_language_;
+  in.spectrum_trace_color = wave_spectrum_color_;
+  in.time_q_trace_color = wave_time_q_color_;
+  in.time_i_trace_color = wave_time_i_color_;
+  in.constellation_point_color = wave_constellation_color_;
   map_draw_time_panel(p, win_width, win_height, in);
 }
 
@@ -1082,6 +1278,10 @@ void MapWidget::draw_constellation_panel(QPainter &p, int win_width,
       (in.ctrl.interference_selection == 2) && in.ctrl.running_ui;
   in.spec_snap = spec_snap_;
   in.language = ui_language_;
+  in.spectrum_trace_color = wave_spectrum_color_;
+  in.time_q_trace_color = wave_time_q_color_;
+  in.time_i_trace_color = wave_time_i_color_;
+  in.constellation_point_color = wave_constellation_color_;
   map_draw_constellation_panel(p, win_width, win_height, in);
 }
 #endif // MAP_WIDGET_CONTROL_METHODS_INL_CONTEXT

@@ -319,7 +319,7 @@ void MapWidget::issue_place_search(const QString &query, bool from_suggest) {
                                        bias_lon, bias_box_deg, lang);
 
   QNetworkRequest req(url);
-  req.setRawHeader("User-Agent", "bds-sim-map-gui/1.0");
+  req.setRawHeader("User-Agent", "gnss-sim-map-gui/1.0");
   ++search_seq_counter_;
   latest_search_seq_ = search_seq_counter_;
   QNetworkReply *reply = search_net_->get(req);

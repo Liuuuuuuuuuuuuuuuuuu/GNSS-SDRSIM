@@ -4,7 +4,7 @@
 #else
 enum { PATH_SEG_QUEUED = 0, PATH_SEG_EXECUTING = 1 };
 
-static constexpr int kMaxQueuedSegments = 5;
+static constexpr int kMaxQueuedSegments = 64;
 
 struct GuiPathSegment {
   double start_lat_deg;
@@ -13,6 +13,8 @@ struct GuiPathSegment {
   double end_lon_deg;
   int mode;
   int state;
+  int chunk_total = 1;
+  int chunk_done = 0;
   std::vector<LonLat> polyline;
   char path_file[256];
 };
@@ -69,7 +71,9 @@ GuiControlState g_ctrl = {
   .hover_rb_panel = false,
   .panel_expand_progress = {0.0, 0.0},
   .rinex_name_bds = "N/A",
-  .rinex_name_gps = "N/A"
+  .rinex_name_gps = "N/A",
+  .n_gps_sats = 0,
+  .n_bds_sats = 0
 };
 
 std::atomic<uint32_t> g_gui_start_req(0);

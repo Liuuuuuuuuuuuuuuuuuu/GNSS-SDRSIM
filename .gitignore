@@ -37,3 +37,17 @@ BRDM/*.rnx:Zone.Identifier
 # OS
 .DS_Store
 Thumbs.db
+
+# Runtime artifacts
+runtime_logs/*
+!runtime_logs/.gitkeep
+perf.data
+
+# Python cache leftovers
+__pycache__/
+*.pyc
+
+# Generated launchers / binaries
+gnss-sim
+bin/gnss-sim-*
+bin/gnss-loading-splash

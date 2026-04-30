@@ -1244,6 +1244,19 @@ std::string emit_json(const unsigned char mac[6],
     return std::string(out);
 }
 
+const char *classify_rid_plausibility(double distance_m,
+                                      bool any_vendor_mode,
+                                      const std::string &remote_id_id,
+                                      bool has_operator) {
+    if (distance_m > 50000.0) {
+        return any_vendor_mode ? "suspect-any-vendor" : "suspect-range";
+    }
+    if (distance_m > 10000.0 && remote_id_id.empty() && !has_operator) {
+        return any_vendor_mode ? "weak-any-vendor" : "weak-range";
+    }
+    return "plausible";
+}
+
 std::string emit_monitor_json(const unsigned char bssid[6],
                               int signal_dbm,
                               int channel,
@@ -1723,11 +1736,23 @@ int main(int argc, char **argv) {
         if (current_channel > 0) {
             notify_tracker_channel(current_channel, frame_signal_dbm, args.iface);
         }
+        const double distance_m = geo::haversine_m(obs_lat, obs_lon, drone_lat, drone_lon);
+        const double bearing_deg = geo::bearing_deg(obs_lat, obs_lon, drone_lat, drone_lon);
+        const char *plausibility = classify_rid_plausibility(distance_m,
+                                     g_any_vendor,
+                                     remote_id_id,
+                                     has_operator);
         std::fprintf(stderr,
-                     "[wifi-rid-bridge] rid=1 %s lat=%.7f lon=%.7f dist=%.1fm brg=%.1f\n",
-                     macs.c_str(), drone_lat, drone_lon,
-                     geo::haversine_m(obs_lat, obs_lon, drone_lat, drone_lon),
-                     geo::bearing_deg(obs_lat, obs_lon, drone_lat, drone_lon));
+                 "[wifi-rid-bridge] src_mac=%s id=%s ch=%d mode=%s plausibility=%s lat=%.7f lon=%.7f dist=%.1fm brg=%.1f\n",
+                 macs.c_str(),
+                 remote_id_id.empty() ? "(none)" : remote_id_id.c_str(),
+                 current_channel,
+                 g_any_vendor ? "any-vendor" : "odid-oui",
+                 plausibility,
+                 drone_lat,
+                 drone_lon,
+                 distance_m,
+                 bearing_deg);
     }
 
     close(udp);

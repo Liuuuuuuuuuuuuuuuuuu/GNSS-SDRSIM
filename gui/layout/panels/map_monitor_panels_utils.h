@@ -3,6 +3,7 @@
 
 #include <QImage>
 #include <QPainter>
+#include <QColor>
 
 #include "gui/core/state/control_state.h"
 #include "gui/core/i18n/gui_i18n.h"
@@ -14,6 +15,10 @@ struct MapMonitorPanelsInput {
   SpectrumSnapshot spec_snap;
   QImage waterfall_image;
   GuiLanguage language = GuiLanguage::English;
+  QColor spectrum_trace_color = QColor("#51a7ff");
+  QColor time_q_trace_color = QColor("#51a7ff");
+  QColor time_i_trace_color = QColor("#ef4444");
+  QColor constellation_point_color = QColor("#51a7ff");
     std::vector<DroneCenterRadarPoint> radar_points;
     bool show_drone_center = false;
 };

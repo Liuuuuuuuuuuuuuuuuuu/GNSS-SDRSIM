@@ -4,12 +4,17 @@
 #include <QPainter>
 #include <QRect>
 
+#include <array>
+
 #include "gui/core/i18n/gui_i18n.h"
 
 struct MapOsmControlsInput {
   QRect panel;
   GuiLanguage language = GuiLanguage::English;
   bool running_ui = false;
+  bool receiver_valid = false;
+  double receiver_lat_deg = 0.0;
+  double receiver_lon_deg = 0.0;
   bool can_undo = false;
   bool dji_on = false;
   bool show_range_cap_legend = false;
@@ -23,11 +28,13 @@ struct MapOsmControlsInput {
   long long elapsed_sec = 0;
   bool show_target_distance = false;
   double target_distance_km = 0.0;
+  std::array<bool, 4> nfz_layers_rendered = {false, false, false, false};
 };
 
 struct MapOsmControlsState {
   QRect lang_btn_rect;
   QRect back_btn_rect;
+  QRect recenter_btn_rect;
   QRect nfz_btn_rect;
   QRect dark_mode_btn_rect;
   QRect tutorial_toggle_rect;

@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=GNSS
+Comment=Launch GNSS mixed (GPS+BDS) mode
+Exec=gnss-sim
+Path=/home/user/GNSS-SDRSIM
+Terminal=false
+Categories=Science;Utility;
+Icon=/home/user/GNSS-SDRSIM/assets/gnss-logo.png

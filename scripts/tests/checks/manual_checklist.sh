@@ -5,7 +5,7 @@ print_manual_checklist() {
   print_section "Manual Runtime Checklist (C/C++ package)"
   cat <<'EOF'
 [ ] Build passes: make -j$(nproc)
-[ ] Launcher works: ./bds-sim --help
+[ ] Launcher works: ./gnss-sim --help
 [ ] Crossbow mode toggles in GUI
 [ ] RID diagnostics line updates when UDP JSON arrives (if bridge exists)
 [ ] Radar point appears when gate=PASSED

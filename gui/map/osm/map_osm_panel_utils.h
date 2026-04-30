@@ -55,12 +55,16 @@ struct MapOsmPanelInput {
   const std::vector<DjiNfzZone> *nfz_zones = nullptr;
   std::function<bool(double lat, double lon, QPoint *out)> coord_to_screen;
   bool nfz_enabled = false;
+  bool show_nfz_diag = false;
+  int dji_nfz_fetched_count = 0;
+  int dji_nfz_visible_count = 0;
   bool has_selected_llh = false;
   double selected_lat_deg = 0.0;
   double selected_lon_deg = 0.0;
   bool has_preview_segment = false;
   MapOsmPanelSegment::PathMode preview_mode =
       MapOsmPanelSegment::PathMode::Plan;
+  bool preview_plan_route_ready = false;
   double preview_start_lat_deg = 0.0;
   double preview_start_lon_deg = 0.0;
   double preview_end_lat_deg = 0.0;
@@ -80,6 +84,7 @@ struct MapOsmPanelInput {
   QRect search_box_rect;
   bool show_launch_button = false;
   std::array<bool, 4> nfz_layer_visible = {true, false, false, false};
+  std::array<bool, 4> nfz_layers_rendered = {false, false, false, false};
   bool tx_active = false;
   long long elapsed_sec = 0;
   QString plan_status;
@@ -96,6 +101,7 @@ struct MapOsmPanelInput {
 struct MapOsmPanelState {
   QRect lang_btn_rect;
   QRect back_btn_rect;
+  QRect recenter_btn_rect;
   QRect nfz_btn_rect;
   QRect dark_mode_btn_rect;
   QRect tutorial_toggle_rect;
@@ -106,6 +112,7 @@ struct MapOsmPanelState {
   QRect osm_scale_bar_rect;
   std::vector<QRect> status_badge_rects;
   std::vector<QRect> nfz_legend_row_rects;
+  std::array<bool, 4> nfz_layers_rendered = {false, false, false, false};
 };
 
 void map_draw_osm_panel(QPainter &p, const MapOsmPanelInput &in,

@@ -61,6 +61,12 @@ bool nfz_zone_center(const DjiNfzZone &nfz, double *lat, double *lon) {
   if (!lat || !lon)
     return false;
 
+  if (nfz.has_cached_center) {
+    *lat = nfz.cached_center_lat;
+    *lon = nfz.cached_center_lon;
+    return true;
+  }
+
   if (nfz.type == DjiNfzType::CIRCLE) {
     *lat = nfz.center_lat;
     *lon = nfz.center_lon;
@@ -146,6 +152,12 @@ bool nfz_pick_target_llh(const std::vector<DjiNfzZone> &zones, double click_lat,
   for (const auto &nfz : zones) {
     const int layer_idx = nfz_zone_layer_index(nfz);
     if (layer_visible4 && layer_idx >= 0 && layer_idx < 4 && !layer_visible4[layer_idx]) {
+      continue;
+    }
+
+    if (nfz.has_outer_bbox &&
+        (click_lat < nfz.outer_min_lat || click_lat > nfz.outer_max_lat ||
+         click_lon < nfz.outer_min_lon || click_lon > nfz.outer_max_lon)) {
       continue;
     }
 

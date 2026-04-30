@@ -48,6 +48,89 @@ bool parse_ring_points(const QJsonValue &ring_val, DjiPolygonRing *out_ring) {
   return out_ring->points.size() >= 3;
 }
 
+bool compute_ring_bbox(const std::vector<DjiLonLat> &ring, double *min_lat,
+                       double *max_lat, double *min_lon, double *max_lon) {
+  if (!min_lat || !max_lat || !min_lon || !max_lon || ring.empty())
+    return false;
+
+  *min_lat = ring[0].lat;
+  *max_lat = ring[0].lat;
+  *min_lon = ring[0].lon;
+  *max_lon = ring[0].lon;
+  for (const auto &pt : ring) {
+    *min_lat = std::min(*min_lat, pt.lat);
+    *max_lat = std::max(*max_lat, pt.lat);
+    *min_lon = std::min(*min_lon, pt.lon);
+    *max_lon = std::max(*max_lon, pt.lon);
+  }
+  return true;
+}
+
+bool compute_ring_centroid(const std::vector<DjiLonLat> &ring, double *lat,
+                           double *lon) {
+  if (!lat || !lon || ring.size() < 3)
+    return false;
+
+  double area2 = 0.0;
+  double cx_acc = 0.0;
+  double cy_acc = 0.0;
+  for (size_t i = 0, j = ring.size() - 1; i < ring.size(); j = i++) {
+    const double x0 = ring[j].lon;
+    const double y0 = ring[j].lat;
+    const double x1 = ring[i].lon;
+    const double y1 = ring[i].lat;
+    const double cross = x0 * y1 - x1 * y0;
+    area2 += cross;
+    cx_acc += (x0 + x1) * cross;
+    cy_acc += (y0 + y1) * cross;
+  }
+
+  if (std::abs(area2) <= 1e-12)
+    return false;
+
+  *lon = cx_acc / (3.0 * area2);
+  *lat = cy_acc / (3.0 * area2);
+  return true;
+}
+
+void fill_zone_cached_geometry(DjiNfzZone *zone) {
+  if (!zone)
+    return;
+
+  if (zone->type == DjiNfzType::CIRCLE) {
+    zone->has_cached_center = true;
+    zone->cached_center_lat = zone->center_lat;
+    zone->cached_center_lon = zone->center_lon;
+
+    const double d_lat = zone->radius_m / 111320.0;
+    const double cos_lat = std::max(0.2, std::cos(zone->center_lat * M_PI / 180.0));
+    const double d_lon = zone->radius_m / (111320.0 * cos_lat);
+    zone->has_outer_bbox = true;
+    zone->outer_min_lat = zone->center_lat - d_lat;
+    zone->outer_max_lat = zone->center_lat + d_lat;
+    zone->outer_min_lon = zone->center_lon - d_lon;
+    zone->outer_max_lon = zone->center_lon + d_lon;
+    return;
+  }
+
+  if (zone->type != DjiNfzType::POLYGON || zone->rings.empty())
+    return;
+
+  const auto &outer = zone->rings[0].points;
+  zone->has_outer_bbox = compute_ring_bbox(
+      outer, &zone->outer_min_lat, &zone->outer_max_lat,
+      &zone->outer_min_lon, &zone->outer_max_lon);
+
+  if (compute_ring_centroid(outer, &zone->cached_center_lat,
+                            &zone->cached_center_lon)) {
+    zone->has_cached_center = true;
+  } else if (zone->has_outer_bbox) {
+    zone->cached_center_lat = 0.5 * (zone->outer_min_lat + zone->outer_max_lat);
+    zone->cached_center_lon = 0.5 * (zone->outer_min_lon + zone->outer_max_lon);
+    zone->has_cached_center = true;
+  }
+}
+
 void append_polygon_from_value(const QJsonValue &poly_val,
                                std::vector<DjiPolygonRing> *out_rings) {
   if (!out_rings || !poly_val.isArray())
@@ -159,6 +242,7 @@ void dji_nfz_parse_zone_geometry(const QJsonObject &src, const QString &zone_nam
     }
 
     if (!nfz.rings.empty()) {
+      fill_zone_cached_geometry(&nfz);
       out_zones->push_back(std::move(nfz));
       return;
     }
@@ -170,6 +254,7 @@ void dji_nfz_parse_zone_geometry(const QJsonObject &src, const QString &zone_nam
     nfz.center_lat = src.value("lat").toDouble();
     nfz.center_lon = src.value("lng").toDouble();
     nfz.radius_m = radius;
+    fill_zone_cached_geometry(&nfz);
     out_zones->push_back(std::move(nfz));
   }
 }

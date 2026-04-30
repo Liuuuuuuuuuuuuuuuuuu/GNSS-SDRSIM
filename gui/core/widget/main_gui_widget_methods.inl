@@ -97,6 +97,36 @@ void MapWidget::onTick() {
     return;
   }
 
+  if (!map_ready_signal_emitted_) {
+    const bool panel_ready = osm_panel_rect_.width() > 64 && osm_panel_rect_.height() > 64;
+    const size_t cached_tiles = tile_cache_.size();
+    if (panel_ready && cached_tiles >= (size_t)map_ready_min_tiles_) {
+      map_ready_signal_emitted_ = true;
+      if (!map_ready_signal_path_.empty()) {
+        std::ofstream ofs(map_ready_signal_path_, std::ios::out | std::ios::trunc);
+        if (ofs.good()) {
+          ofs << "tiles=" << cached_tiles << " pending=" << tile_pending_.size() << "\n";
+          ofs.close();
+        }
+      }
+    }
+  }
+
+  if (user_geo_focus_pending_ && !user_geo_focus_applied_ && user_geo_valid_ &&
+      !user_map_interacted_ && map_ready_signal_emitted_) {
+    osm_zoom_ = user_geo_focus_zoom_;
+    osm_zoom_base_ = user_geo_focus_zoom_;
+    osm_center_px_x_ = osm_lon_to_world_x(user_geo_lon_deg_, osm_zoom_);
+    osm_center_px_y_ = osm_lat_to_world_y(user_geo_lat_deg_, osm_zoom_);
+    normalize_osm_center();
+    request_visible_tiles();
+    notify_nfz_viewport_changed();
+    osm_bg_needs_redraw_ = true;
+    update(osm_panel_rect_);
+    user_geo_focus_pending_ = false;
+    user_geo_focus_applied_ = true;
+  }
+
   bool tutorial_state_changed = tutorial_sync_control_panel_page(
       tutorial_overlay_visible_, tutorial_step_, &g_ctrl.show_detailed_ctrl);
   update_overlay_widget_visibility();
@@ -256,12 +286,16 @@ void MapWidget::onTick() {
   if (!llh_ready) {
     has_selected_llh_ = false;
     has_preview_segment_ = false;
+    preview_confirm_in_progress_ = false;
     preview_polyline_.clear();
     plan_status_.clear();
   }
 
   if (running_ui != last_running_ui) {
     last_running_ui = running_ui;
+    if (!running_ui) {
+      g_gui_reset_waterfall_req.fetch_add(1);
+    }
     osm_bg_needs_redraw_ = true;
     update(QRect(0, 0, width() / 2, height()));
   }
@@ -283,6 +317,10 @@ void MapWidget::onTick() {
   bool receiver_moved = false;
   update_receiver_animation(now, running_ui, &receiver_moved);
 
+    const bool smart_route_loading_anim =
+      running_ui && has_preview_segment_ &&
+      preview_mode_ == PATH_MODE_PLAN && !preview_plan_route_ready_;
+
   if (running_ui && receiver_anim_valid_ && receiver_moved &&
       now >= next_receiver_draw_tick_) {
     do {
@@ -290,6 +328,13 @@ void MapWidget::onTick() {
     } while (next_receiver_draw_tick_ <= now);
     update(osm_rect);
     update(map_rect);
+  }
+
+  if (smart_route_loading_anim && now >= next_receiver_draw_tick_) {
+    do {
+      next_receiver_draw_tick_ += std::chrono::milliseconds(16);
+    } while (next_receiver_draw_tick_ <= now);
+    update(osm_rect);
   }
 
   const bool tx_active_now = g_tx_active.load();
@@ -354,6 +399,20 @@ void MapWidget::onTick() {
                         .toUtf8()
                         .constData());
     stat_text_ = buf;
+    // Update visible sat counts in g_ctrl so ch slider limit stays current
+    {
+      int ng = 0, nb = 0;
+      for (const auto &sp : sats_) { if (sp.is_gps) ++ng; else ++nb; }
+      std::lock_guard<std::mutex> lk(g_ctrl_mtx);
+      g_ctrl.n_gps_sats = ng;
+      g_ctrl.n_bds_sats = nb;
+      // Clamp max_ch to new limit in case mode/sats changed
+      int lim_n = (g_ctrl.signal_mode == SIG_MODE_GPS)  ? ng :
+                  (g_ctrl.signal_mode == SIG_MODE_BDS)  ? nb :
+                                                           ng + nb;
+      int lim = (lim_n > 0) ? lim_n : 16;
+      if (g_ctrl.max_ch > lim) g_ctrl.max_ch = lim;
+    }
     redraw = true;
     scene_dirty = true;
   }

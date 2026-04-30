@@ -78,11 +78,12 @@ void draw_frequency_x_labels(QPainter &p, const QRect &draw_rect,
 }
 
 void draw_spectrum_trace(QPainter &p, const QRect &draw_rect,
-                         const SpectrumSnapshot &snap) {
+                         const SpectrumSnapshot &snap,
+                         const QColor &trace_color) {
   if (!snap.valid || snap.bins < 8)
     return;
 
-  p.setPen(QPen(QColor("#51a7ff"), 1));
+  p.setPen(QPen(trace_color, 1));
   QPainterPath path;
   for (int i = 0; i < snap.bins; ++i) {
     float t = (float)i / (float)(snap.bins - 1);
@@ -100,13 +101,16 @@ void draw_spectrum_trace(QPainter &p, const QRect &draw_rect,
   p.save();
   p.setClipRect(draw_rect);
   p.drawPath(path);
-  p.setPen(QPen(QColor(81, 167, 255, 96), 3));
+  QColor glow = trace_color;
+  glow.setAlpha(96);
+  p.setPen(QPen(glow, 3));
   p.drawPath(path);
   p.restore();
 }
 
 void draw_time_iq_trace(QPainter &p, const QRect &draw_rect,
-                        const SpectrumSnapshot &snap, bool clamp_samples) {
+                        const SpectrumSnapshot &snap, bool clamp_samples,
+                        const QColor &q_color, const QColor &i_color) {
   if (!snap.time_valid || snap.time_samples < 8 || draw_rect.width() <= 2 ||
       draw_rect.height() <= 2)
     return;
@@ -134,29 +138,34 @@ void draw_time_iq_trace(QPainter &p, const QRect &draw_rect,
       path_i.lineTo(x, yi);
     }
   }
-  p.setPen(QPen(QColor("#51a7ff"), 1));
+  p.setPen(QPen(q_color, 1));
   p.setBrush(Qt::NoBrush);
   p.save();
   p.setClipRect(draw_rect);
   p.drawPath(path_q);
-  p.setPen(QPen(QColor("#ef4444"), 1));
+  p.setPen(QPen(i_color, 1));
   p.drawPath(path_i);
-  p.setPen(QPen(QColor(81, 167, 255, 92), 2));
+  QColor q_glow = q_color;
+  q_glow.setAlpha(92);
+  p.setPen(QPen(q_glow, 2));
   p.drawPath(path_q);
-  p.setPen(QPen(QColor(239, 68, 68, 92), 2));
+  QColor i_glow = i_color;
+  i_glow.setAlpha(92);
+  p.setPen(QPen(i_glow, 2));
   p.drawPath(path_i);
   p.restore();
 }
 
 void draw_constellation_points(QPainter &p, const QRect &draw_rect,
-                               const SpectrumSnapshot &snap) {
+                               const SpectrumSnapshot &snap,
+                               const QColor &point_color) {
   if (!snap.time_valid || snap.time_samples < 8)
     return;
 
   const int cx = draw_rect.center().x();
   const int cy = draw_rect.center().y();
   p.setPen(Qt::NoPen);
-  p.setBrush(QColor("#51a7ff"));
+  p.setBrush(point_color);
   int step = snap.time_samples / 256;
   if (step < 1)
     step = 1;
@@ -184,7 +193,7 @@ void map_draw_spectrum_panel(QPainter &p, int win_width, int win_height,
   if (draw_rect.width() < 8 || draw_rect.height() < 8)
     return;
 
-  draw_spectrum_trace(p, draw_rect, in.spec_snap);
+  draw_spectrum_trace(p, draw_rect, in.spec_snap, in.spectrum_trace_color);
 
   draw_panel_title(p, panel_x, panel_y, panel_h,
                    gui_i18n_text(in.language, "monitor.spectrum"));
@@ -250,7 +259,8 @@ void map_draw_time_panel(QPainter &p, int win_width, int win_height,
   if (draw_rect.width() < 8 || draw_rect.height() < 8)
     return;
 
-  draw_time_iq_trace(p, draw_rect, in.spec_snap, false);
+  draw_time_iq_trace(p, draw_rect, in.spec_snap, false,
+                     in.time_q_trace_color, in.time_i_trace_color);
 
   draw_panel_title(p, panel_x, panel_y, panel_h,
                    gui_i18n_text(in.language, "monitor.time"));
@@ -289,7 +299,8 @@ void map_draw_constellation_panel(QPainter &p, int win_width, int win_height,
   p.drawLine(draw_rect.left(), cy, draw_rect.right(), cy);
   p.drawLine(cx, draw_rect.top(), cx, draw_rect.bottom());
 
-  draw_constellation_points(p, draw_rect, in.spec_snap);
+  draw_constellation_points(p, draw_rect, in.spec_snap,
+                            in.constellation_point_color);
 
   draw_panel_title(p, panel_x, panel_y, panel_h,
                    gui_i18n_text(in.language, "monitor.constellation"));
@@ -407,7 +418,7 @@ void map_draw_spectrum_panel_expanded(QPainter &p, int win_width, int win_height
   if (draw_rect.width() < 8 || draw_rect.height() < 8)
     return;
 
-  draw_spectrum_trace(p, draw_rect, in.spec_snap);
+  draw_spectrum_trace(p, draw_rect, in.spec_snap, in.spectrum_trace_color);
 
   draw_panel_title(p, panel_x, panel_y, panel_h,
                    gui_i18n_text(in.language, "monitor.spectrum"));
@@ -477,7 +488,8 @@ void map_draw_time_panel_expanded(QPainter &p, int win_width, int win_height,
   if (draw_rect.width() < 8 || draw_rect.height() < 8)
     return;
 
-  draw_time_iq_trace(p, draw_rect, in.spec_snap, true);
+  draw_time_iq_trace(p, draw_rect, in.spec_snap, true,
+                     in.time_q_trace_color, in.time_i_trace_color);
 
   draw_panel_title(p, panel_x, panel_y, panel_h,
                    gui_i18n_text(in.language, "monitor.time"));
@@ -516,7 +528,8 @@ void map_draw_constellation_panel_expanded(QPainter &p, int win_width, int win_h
   p.drawLine(draw_rect.left(), cy, draw_rect.right(), cy);
   p.drawLine(cx, draw_rect.top(), cx, draw_rect.bottom());
 
-  draw_constellation_points(p, draw_rect, in.spec_snap);
+  draw_constellation_points(p, draw_rect, in.spec_snap,
+                            in.constellation_point_color);
 
   draw_panel_title(p, panel_x, panel_y, panel_h,
                    gui_i18n_text(in.language, "monitor.constellation"));

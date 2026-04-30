@@ -618,10 +618,17 @@ void map_draw_control_panel(QPainter &p, int win_width, int win_height,
                         path_acc_label.constData(), v_path_a,
                         path_a_ratio, detail_path_enabled);
     control_paint_set_current_slider_element(CTRL_LAYOUT_ELEMENT_CH_SLIDER);
-    control_draw_slider(p, lo.ch_slider, color_border, color_text, color_dim,
-                        QColor(250, 204, 21, 220),
-                        max_ch_label.constData(), v_ch,
-                        ((double)st.max_ch - 1.0) / 15.0, detail_ch_enabled);
+    {
+      int ch_lim_n = (st.signal_mode == SIG_MODE_GPS)  ? st.n_gps_sats :
+                     (st.signal_mode == SIG_MODE_BDS)  ? st.n_bds_sats :
+                                                         st.n_gps_sats + st.n_bds_sats;
+      int ch_lim = (ch_lim_n > 0) ? ch_lim_n : 16;
+      double ch_ratio = (ch_lim > 1) ? ((double)st.max_ch - 1.0) / (double)(ch_lim - 1) : 1.0;
+      control_draw_slider(p, lo.ch_slider, color_border, color_text, color_dim,
+                          QColor(250, 204, 21, 220),
+                          max_ch_label.constData(), v_ch,
+                          ch_ratio, detail_ch_enabled);
+    }
     control_paint_set_current_slider_element(CTRL_LAYOUT_ELEMENT_NONE);
 
     if (st.signal_mode == SIG_MODE_BDS) {

@@ -42,11 +42,14 @@
 #include <QCursor>
 #include <QDialog>
 #include <QDialogButtonBox>
+#include <QFileInfo>
 #include <QFont>
 #include <QFormLayout>
 #include <QGroupBox>
+#include <QGridLayout>
 #include <QHBoxLayout>
 #include <QImage>
+#include <QIcon>
 #include <QInputDialog>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -85,12 +88,15 @@
 #include <array>
 #include <atomic>
 #include <chrono>
+#include <cctype>
 #include <cmath>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <functional>
+#include <fstream>
+#include <limits>
 #include <mutex>
 #include <set>
 #include <string>
@@ -151,16 +157,23 @@ static void apply_element_appearance_override(
 
 class ControlPagePreviewWidget final : public QWidget {
 public:
+  enum class PreviewMode {
+    ControlPage,
+    Waveform,
+  };
+
   explicit ControlPagePreviewWidget(QWidget *parent = nullptr) : QWidget(parent) {
     setMinimumSize(980, 520);
     setMouseTracking(true);
   }
 
   std::function<MapControlPanelInput()> build_input;
+  std::function<MapMonitorPanelsInput()> build_monitor_input;
   std::function<const ControlElementAppearanceOverride *()>
       build_element_appearance_overrides;
   std::function<void(ControlLayoutElementId)> on_select;
   ControlLayoutElementId selected_element = CTRL_LAYOUT_ELEMENT_NONE;
+  PreviewMode preview_mode = PreviewMode::ControlPage;
 
   QSize sizeHint() const override { return QSize(980, 520); }
 
@@ -181,6 +194,21 @@ protected:
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing, true);
     painter.fillRect(rect(), QColor("#040b14"));
+    if (preview_mode == PreviewMode::Waveform) {
+      if (!build_monitor_input) {
+        return;
+      }
+      const MapMonitorPanelsInput mon_in = build_monitor_input();
+      painter.save();
+      painter.translate(-width(), -height());
+      map_draw_spectrum_panel(painter, layout_width(), layout_height(), mon_in);
+      map_draw_waterfall_panel(painter, layout_width(), layout_height(), mon_in);
+      map_draw_time_panel(painter, layout_width(), layout_height(), mon_in);
+      map_draw_constellation_panel(painter, layout_width(), layout_height(), mon_in);
+      painter.restore();
+      return;
+    }
+
     if (!build_input) {
       return;
     }
@@ -261,6 +289,11 @@ protected:
   }
 
   void mousePressEvent(QMouseEvent *event) override {
+    if (preview_mode == PreviewMode::Waveform) {
+      QWidget::mousePressEvent(event);
+      return;
+    }
+
     if (event->button() == Qt::LeftButton && build_input) {
       const MapControlPanelInput in = build_input();
       ControlLayout lo;
@@ -305,9 +338,50 @@ public:
   MapWidget() {
     g_active_widget = this;
     setWindowTitle("GNSS-SDRSIM");
+
+    // Prefer a user-provided GNSS logo if present in common project paths.
+    const QStringList icon_candidates = {
+        QStringLiteral("./assets/gnss-logo.png"),
+        QStringLiteral("./assets/gnss.png"),
+        QStringLiteral("./gnss-logo.png"),
+        QStringLiteral("./gnss.png")};
+    for (const QString &icon_path : icon_candidates) {
+      if (QFileInfo::exists(icon_path)) {
+        const QIcon app_icon(icon_path);
+        if (!app_icon.isNull()) {
+          setWindowIcon(app_icon);
+          break;
+        }
+      }
+    }
+
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     setMinimumSize(1024, 768);
+
+    {
+      const char *perf_env = std::getenv("BDS_GUI_MAP_PERF");
+      if (perf_env && perf_env[0] != '\0') {
+        const char c0 = (char)std::tolower((unsigned char)perf_env[0]);
+        perf_map_profile_enabled_ = !(c0 == '0' || c0 == 'n' || c0 == 'f' || c0 == 'o');
+      }
+      if (perf_map_profile_enabled_) {
+        fprintf(stderr, "[perf][map] realtime map profiler enabled (BDS_GUI_MAP_PERF)\n");
+      }
+
+      const char *ready_path_env = std::getenv("GNSS_MAP_READY_FILE");
+      if (ready_path_env && ready_path_env[0] != '\0') {
+        map_ready_signal_path_ = ready_path_env;
+        std::remove(map_ready_signal_path_.c_str());
+      }
+      const char *ready_tiles_env = std::getenv("GNSS_MAP_READY_MIN_TILES");
+      if (ready_tiles_env && ready_tiles_env[0] != '\0') {
+        const int parsed = std::atoi(ready_tiles_env);
+        if (parsed >= 4 && parsed <= 200) {
+          map_ready_min_tiles_ = parsed;
+        }
+      }
+    }
 
     auto toggle_fullscreen = [this]() {
       if (isFullScreen()) {
@@ -503,7 +577,7 @@ public:
 
     {
       QNetworkRequest req(QUrl("https://ipapi.co/json/"));
-      req.setRawHeader("User-Agent", "bds-sim-map-gui/1.0");
+      req.setRawHeader("User-Agent", "gnss-sim-map-gui/1.0");
       QNetworkReply *reply = geo_net_->get(req);
       connect(reply, &QNetworkReply::finished, this, [this, reply]() {
         if (reply->error() == QNetworkReply::NoError) {
@@ -529,13 +603,10 @@ public:
               user_geo_lat_deg_ = lat;
               user_geo_lon_deg_ = lon;
               user_geo_valid_ = true;
+              user_geo_focus_pending_ = true;
 
-              if (!user_geo_bootstrap_done_ && !user_map_interacted_) {
-                osm_center_px_x_ = osm_lon_to_world_x(lon, osm_zoom_);
-                osm_center_px_y_ = osm_lat_to_world_y(lat, osm_zoom_);
-                notify_nfz_viewport_changed();
-                update(osm_panel_rect_);
-              }
+              // Keep startup map stable at default Taiwan overview; avoid
+              // asynchronous geolocation recenter that causes visible jumping.
               user_geo_bootstrap_done_ = true;
             }
           }
@@ -577,7 +648,7 @@ public:
         }
         osm_zoom_ = 17;
         show_search_return_ = true;
-        set_selected_llh_direct(coord_lat, coord_lon);
+        set_selected_llh_direct(coord_lat, coord_lon, 0.0, true);
         hide_search_results();
         notify_nfz_viewport_changed();
         search_box_->clearFocus();
@@ -738,6 +809,7 @@ public:
     selected_lon_deg_ = 0.0;
     selected_h_m_ = 0.0;
     has_preview_segment_ = false;
+    preview_confirm_in_progress_ = false;
     preview_mode_ = PATH_MODE_PLAN;
     preview_start_lat_deg_ = 0.0;
     preview_start_lon_deg_ = 0.0;
@@ -854,7 +926,7 @@ private:
           tile_pending_.insert(key);
           QString url = map_tile_url(osm_zoom_, tx_wrap, ty, dark_map_mode_);
           QNetworkRequest req{QUrl(url)};
-          req.setRawHeader("User-Agent", "bds-sim-map-gui/1.0");
+          req.setRawHeader("User-Agent", "gnss-sim-map-gui/1.0");
           QNetworkReply *reply = tile_net_->get(req);
           reply->setProperty("tile_key", key);
         }
@@ -937,8 +1009,9 @@ private:
   bool panel_point_to_llh(const QPoint &pos, double *lat_deg,
                           double *lon_deg) const;
   void normalize_osm_center();
+  bool fit_paths_into_view();
   void start_route_prefetch(double lat0, double lon0, double lat1,
-                            double lon1);
+                            double lon1, bool prioritize_latest = false);
   void onRouteReply(QNetworkReply *reply);
   bool get_current_plan_anchor(double *lat_deg, double *lon_deg);
   void set_preview_target(const QPoint &pos, int mode);
@@ -982,6 +1055,20 @@ private:
   QTimer *timer_ = nullptr;
   std::chrono::steady_clock::time_point next_time_tick_;
   std::chrono::steady_clock::time_point next_scene_tick_;
+  bool perf_map_profile_enabled_ = false;
+  std::chrono::steady_clock::time_point perf_map_report_tp_;
+  std::array<double, 256> perf_map_window_ms_{};
+  int perf_map_window_count_ = 0;
+  int perf_map_window_head_ = 0;
+  double perf_map_window_sum_ms_ = 0.0;
+  double perf_map_window_max_ms_ = 0.0;
+  double perf_map_tile_sum_ms_ = 0.0;
+  double perf_map_bg_sum_ms_ = 0.0;
+  double perf_map_overlay_sum_ms_ = 0.0;
+  double perf_map_tile_max_ms_ = 0.0;
+  double perf_map_bg_max_ms_ = 0.0;
+  double perf_map_overlay_max_ms_ = 0.0;
+  uint64_t perf_map_window_frames_ = 0;
   uint64_t last_spec_seq_ = 0;
   QImage map_panel_static_bg_;
   QSize map_panel_static_bg_size_;
@@ -993,15 +1080,22 @@ private:
   std::unordered_map<QString, std::vector<LonLat>> route_prefetch_cache_;
   std::set<QString> route_prefetch_pending_;
   std::vector<QString> route_prefetch_order_;
+    std::chrono::steady_clock::time_point last_route_prefetch_tp_{};
+    double last_route_prefetch_end_lat_deg_ =
+      std::numeric_limits<double>::quiet_NaN();
+    double last_route_prefetch_end_lon_deg_ =
+      std::numeric_limits<double>::quiet_NaN();
+    int route_prefetch_min_interval_ms_ = 120;
+    double route_prefetch_min_move_m_ = 35.0;
   QTimer *control_gear_click_timer_ = nullptr;
   QLineEdit *inline_editor_ = nullptr;
   int inline_edit_field_ = -1;
   QRect osm_panel_rect_;
-  int osm_zoom_ = 12;
-  int osm_zoom_base_ = 12;
+  int osm_zoom_ = 7;
+  int osm_zoom_base_ = 7;
   int map_wheel_delta_accum_ = 0;
-  double osm_center_px_x_ = osm_lon_to_world_x(121.5654, 12);
-  double osm_center_px_y_ = osm_lat_to_world_y(25.0330, 12);
+  double osm_center_px_x_ = osm_lon_to_world_x(120.95, 7);
+  double osm_center_px_y_ = osm_lat_to_world_y(23.75, 7);
   QImage osm_bg_cache_;
   QSize osm_bg_cache_size_;
   int osm_bg_cache_zoom_ = -1;
@@ -1011,6 +1105,13 @@ private:
   bool osm_bg_cache_valid_ = false;
   bool dragging_osm_ = false;
   bool drag_moved_osm_ = false;
+  std::chrono::steady_clock::time_point last_tile_request_tp_{};
+  std::chrono::steady_clock::time_point last_nfz_fetch_tp_{};
+  int tile_request_throttle_ms_ = 45;
+  int nfz_fetch_throttle_ms_ = 90;
+  std::string map_ready_signal_path_;
+  bool map_ready_signal_emitted_ = false;
+  int map_ready_min_tiles_ = 18;
   int active_control_slider_ = -1;
   bool suppress_left_click_release_ = false;
   QPoint drag_last_pos_;
@@ -1019,7 +1120,9 @@ private:
   double selected_lon_deg_ = 0.0;
   double selected_h_m_ = 0.0;
   bool has_preview_segment_ = false;
+  bool preview_confirm_in_progress_ = false;
   int preview_mode_ = PATH_MODE_PLAN;
+  bool preview_plan_route_ready_ = false;
   double preview_start_lat_deg_ = 0.0;
   double preview_start_lon_deg_ = 0.0;
   double preview_end_lat_deg_ = 0.0;
@@ -1036,15 +1139,11 @@ private:
 
   // 輔助函式：通知 DJI NFZ 模組地圖視角改變了
   bool is_jam_map_locked() const {
-    std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-    return g_ctrl.interference_selection == 1 && g_ctrl.running_ui;
+    return false;
   }
 
   bool is_map_center_locked() const {
-    if (is_jam_map_locked()) {
-      return true;
-    }
-    return crossbow_center_locked_;
+    return false;
   }
 
   void notify_nfz_viewport_changed() {
@@ -1077,6 +1176,10 @@ private:
   QColor control_border_color_ = QColor("#b9cadf");
   QColor control_text_color_ = QColor("#f8fbff");
   QColor control_dim_text_color_ = QColor("#6b7b90");
+  QColor wave_spectrum_color_ = QColor("#51a7ff");
+  QColor wave_time_q_color_ = QColor("#51a7ff");
+  QColor wave_time_i_color_ = QColor("#ef4444");
+  QColor wave_constellation_color_ = QColor("#51a7ff");
   ControlElementAppearanceOverride
       control_element_appearance_overrides_[CTRL_LAYOUT_ELEMENT_COUNT]{};
   ControlLayoutOverrides control_layout_overrides_{};
@@ -1086,6 +1189,7 @@ private:
   QRect control_gear_btn_rect_;
   int control_gear_tap_count_ = 0;
   std::chrono::steady_clock::time_point control_gear_tap_last_tp_{};
+  bool nfz_diag_visible_ = false;
   bool font_times_bold_ = true;
   bool font_times_italic_ = true;
   bool font_times_bold_italic_ = true;
@@ -1103,6 +1207,9 @@ private:
   double user_geo_lat_deg_ = 0.0;
   double user_geo_lon_deg_ = 0.0;
   bool user_geo_bootstrap_done_ = false;
+  bool user_geo_focus_pending_ = false;
+  bool user_geo_focus_applied_ = false;
+  int user_geo_focus_zoom_ = 12;
   bool user_map_interacted_ = false;
   bool show_search_return_ = false;
   double pre_search_center_x_ = 0.0;
@@ -1137,6 +1244,7 @@ private:
   int crossbow_stage_total_pages_ = 1;
   QRect osm_runtime_rect_;
   QRect osm_scale_bar_rect_;
+  QRect osm_recenter_btn_rect_;
   std::vector<QRect> osm_status_badge_rects_;
   std::vector<QRect> osm_nfz_legend_row_rects_;
   bool scale_ruler_enabled_ = false;
@@ -1147,7 +1255,7 @@ private:
   double scale_ruler_end_lat_deg_ = 0.0;
   double scale_ruler_end_lon_deg_ = 0.0;
   bool scale_ruler_end_fixed_ = false;
-  std::array<bool, 4> nfz_layer_visible_ = {true, false, false, false};
+  std::array<bool, 4> nfz_layer_visible_ = {true, true, true, true};
   QRect tutorial_toggle_rect_;
   QRect tutorial_prev_btn_rect_;
   QRect tutorial_next_btn_rect_;
@@ -1242,9 +1350,6 @@ private:
   double crossbow_cached_nfz_lat_deg_ = 0.0;
   double crossbow_cached_nfz_lon_deg_ = 0.0;
   double crossbow_cached_nfz_dist_m_ = 0.0;
-  bool crossbow_center_locked_ = false;
-  double crossbow_center_lock_lat_deg_ = 0.0;
-  double crossbow_center_lock_lon_deg_ = 0.0;
   std::chrono::steady_clock::time_point crossbow_oor_hold_until_tp_;
   double crossbow_oor_hold_dist_m_ = 0.0;
 
@@ -1362,10 +1467,13 @@ public:
 
 static void gui_thread_main() {
   int argc = 1;
-  char app_name[] = "bds-sim";
+  char app_name[] = "gnss";
   char *argv[] = {app_name, nullptr};
 
   QApplication app(argc, argv);
+  app.setApplicationName(QStringLiteral("GNSS"));
+  app.setApplicationDisplayName(QStringLiteral("GNSS"));
+  QGuiApplication::setDesktopFileName(QStringLiteral("GNSS.desktop"));
   g_app = &app;
 
   MapWidget w;

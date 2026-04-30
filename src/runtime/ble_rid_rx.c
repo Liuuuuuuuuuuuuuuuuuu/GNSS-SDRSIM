@@ -276,7 +276,7 @@ int ble_rid_start_from_env(void)
 
             fprintf(stderr,
                 "[ble_rid] bridge launch failed (hci=%s). "
-                "Hint: run 'sudo -v' before ./bds-sim, or set "
+                "Hint: run 'sudo -v' before ./gnss-sim, or set "
                 "BDS_BLE_RID_SUDO_NONINTERACTIVE=0 for interactive sudo prompt.\n",
                 hci_buf);
             return -1;

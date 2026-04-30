@@ -74,13 +74,8 @@ static double compute_dynamic_segment_cap_m(double vmax_mps) {
   return clamp_double(cap_m, 15000.0, 220000.0);
 }
 
-static constexpr int kMaxRouteCacheEntries = 96;
-
-static double meters_per_pixel_at_lat(double lat_deg, int zoom) {
-  const double cos_lat = std::max(0.05, std::cos(lat_deg * M_PI / 180.0));
-  const double world_px = 256.0 * (double)(1 << std::max(0, zoom));
-  return (40075016.0 * cos_lat) / std::max(1.0, world_px);
-}
+static constexpr int kMaxRouteCacheEntries = 320;
+static constexpr int kMaxRoutePrefetchPending = 4;
 
 static void project_point_to_distance_cap(double lat0_deg, double lon0_deg,
                                           double lat1_deg, double lon1_deg,
@@ -119,6 +114,92 @@ static void project_point_to_distance_cap(double lat0_deg, double lon0_deg,
   *out_lon_deg = wrap_lon_deg(lon2 * 180.0 / M_PI);
 }
 
+static double preview_polyline_length_m(const std::vector<LonLat> &polyline) {
+  if (polyline.size() < 2)
+    return 0.0;
+  double total_m = 0.0;
+  for (size_t i = 1; i < polyline.size(); ++i) {
+    total_m += distance_m_approx(polyline[i - 1].lat, polyline[i - 1].lon,
+                                 polyline[i].lat, polyline[i].lon);
+  }
+  return total_m;
+}
+
+static LonLat interpolate_lonlat(const LonLat &a, const LonLat &b, double t) {
+  const double tt = clamp_double(t, 0.0, 1.0);
+  const double dlon = wrap_lon_delta_deg(b.lon - a.lon);
+  LonLat out{};
+  out.lat = a.lat + (b.lat - a.lat) * tt;
+  out.lon = wrap_lon_deg(a.lon + dlon * tt);
+  return out;
+}
+
+static bool split_polyline_by_cap(const std::vector<LonLat> &polyline,
+                                  double cap_m,
+                                  std::vector<std::vector<LonLat>> *chunks) {
+  if (!chunks)
+    return false;
+  chunks->clear();
+  if (polyline.size() < 2 || cap_m <= 1.0)
+    return false;
+
+  std::vector<LonLat> current;
+  current.reserve(polyline.size());
+  current.push_back(polyline.front());
+  double current_len_m = 0.0;
+
+  for (size_t i = 1; i < polyline.size(); ++i) {
+    LonLat seg_start = polyline[i - 1];
+    const LonLat seg_end = polyline[i];
+
+    while (true) {
+      const double edge_len_m =
+          distance_m_approx(seg_start.lat, seg_start.lon, seg_end.lat, seg_end.lon);
+      if (edge_len_m <= 0.01) {
+        if (current.empty() ||
+            distance_m_approx(current.back().lat, current.back().lon,
+                              seg_end.lat, seg_end.lon) > 0.01) {
+          current.push_back(seg_end);
+        }
+        break;
+      }
+
+      double remain_m = cap_m - current_len_m;
+      if (remain_m < 0.5) {
+        if (current.size() < 2)
+          return false;
+        chunks->push_back(current);
+        current.clear();
+        current.push_back(seg_start);
+        current_len_m = 0.0;
+        remain_m = cap_m;
+      }
+
+      if (edge_len_m <= remain_m + 1e-6) {
+        current.push_back(seg_end);
+        current_len_m += edge_len_m;
+        break;
+      }
+
+      const double t = remain_m / edge_len_m;
+      const LonLat cut = interpolate_lonlat(seg_start, seg_end, t);
+      current.push_back(cut);
+      if (current.size() < 2)
+        return false;
+      chunks->push_back(current);
+      current.clear();
+      current.push_back(cut);
+      current_len_m = 0.0;
+      seg_start = cut;
+    }
+  }
+
+  if (current.size() >= 2) {
+    chunks->push_back(current);
+  }
+  return !chunks->empty();
+}
+
 bool MapWidget::panel_point_to_llh(const QPoint &pos, double *lat_deg,
                                    double *lon_deg) const {
   if (!osm_panel_rect_.contains(pos))
@@ -150,13 +231,116 @@ void MapWidget::normalize_osm_center() {
     osm_center_px_x_ += world_size;
   while (osm_center_px_x_ >= world_size)
     osm_center_px_x_ -= world_size;
+  while (osm_center_px_y_ < 0.0)
+    osm_center_px_y_ += world_size;
+  while (osm_center_px_y_ >= world_size)
+    osm_center_px_y_ -= world_size;
+}
 
-  const double max_world_y = world_size - 1.0;
-  osm_center_px_y_ = clamp_double(osm_center_px_y_, 0.0, max_world_y);
+bool MapWidget::fit_paths_into_view() {
+  if (osm_panel_rect_.width() < 120 || osm_panel_rect_.height() < 120) {
+    return false;
+  }
+
+  std::vector<LonLat> pts;
+  {
+    std::lock_guard<std::mutex> lk(g_path_seg_mtx);
+    if (g_path_segments.empty()) {
+      return false;
+    }
+    for (const auto &seg : g_path_segments) {
+      if (!seg.polyline.empty()) {
+        pts.insert(pts.end(), seg.polyline.begin(), seg.polyline.end());
+      } else {
+        pts.push_back({wrap_lon_deg(seg.start_lon_deg), seg.start_lat_deg});
+        pts.push_back({wrap_lon_deg(seg.end_lon_deg), seg.end_lat_deg});
+      }
+    }
+  }
+
+  if (pts.empty()) {
+    return false;
+  }
+
+  const int kMinFitZoom = 4;
+  const int kMaxFitZoom = 19;
+  const double avail_w = std::max(96.0, (double)osm_panel_rect_.width() * 0.90);
+  const double avail_h = std::max(72.0, (double)osm_panel_rect_.height() * 0.86);
+
+  auto calc_bounds = [&](int zoom, double *out_cx, double *out_cy,
+                         double *out_w, double *out_h) {
+    const double world = osm_world_size_for_zoom(zoom);
+    if (world <= 0.0) {
+      return false;
+    }
+
+    const double ref_lon = wrap_lon_deg(pts.front().lon);
+    const double ref_x = osm_lon_to_world_x(ref_lon, zoom);
+    const double ref_y = osm_lat_to_world_y(clamp_double(pts.front().lat, -85.0, 85.0), zoom);
+
+    double min_x = ref_x;
+    double max_x = ref_x;
+    double min_y = ref_y;
+    double max_y = ref_y;
+
+    for (const auto &p : pts) {
+      const double wx = osm_lon_to_world_x(wrap_lon_deg(p.lon), zoom);
+      double dx = wx - ref_x;
+      if (dx > world * 0.5) {
+        dx -= world;
+      } else if (dx < -world * 0.5) {
+        dx += world;
+      }
+      const double ux = ref_x + dx;
+      const double uy = osm_lat_to_world_y(clamp_double(p.lat, -85.0, 85.0), zoom);
+
+      min_x = std::min(min_x, ux);
+      max_x = std::max(max_x, ux);
+      min_y = std::min(min_y, uy);
+      max_y = std::max(max_y, uy);
+    }
+
+    *out_cx = (min_x + max_x) * 0.5;
+    *out_cy = (min_y + max_y) * 0.5;
+    *out_w = std::max(1.0, max_x - min_x);
+    *out_h = std::max(1.0, max_y - min_y);
+    return true;
+  };
+
+  int chosen_zoom = kMinFitZoom;
+  double chosen_cx = 0.0;
+  double chosen_cy = 0.0;
+  double span_w = 0.0;
+  double span_h = 0.0;
+  if (!calc_bounds(kMinFitZoom, &chosen_cx, &chosen_cy, &span_w, &span_h)) {
+    return false;
+  }
+
+  for (int z = kMaxFitZoom; z >= kMinFitZoom; --z) {
+    double cx = 0.0;
+    double cy = 0.0;
+    double w = 0.0;
+    double h = 0.0;
+    if (!calc_bounds(z, &cx, &cy, &w, &h)) {
+      continue;
+    }
+    if (w <= avail_w && h <= avail_h) {
+      chosen_zoom = z;
+      chosen_cx = cx;
+      chosen_cy = cy;
+      break;
+    }
+  }
+
+  osm_zoom_ = chosen_zoom;
+  osm_center_px_x_ = chosen_cx;
+  osm_center_px_y_ = chosen_cy;
+  normalize_osm_center();
+  return true;
 }
 
 void MapWidget::start_route_prefetch(double lat0, double lon0, double lat1,
-                                     double lon1) {
+                                     double lon1, bool prioritize_latest) {
   if (!route_net_)
     return;
 
@@ -166,10 +350,47 @@ void MapWidget::start_route_prefetch(double lat0, double lon0, double lat1,
   if (route_prefetch_pending_.find(key) != route_prefetch_pending_.end())
     return;
 
+  if (prioritize_latest) {
+    const auto replies = route_net_->findChildren<QNetworkReply *>();
+    for (QNetworkReply *r : replies) {
+      if (!r)
+        continue;
+      const QString rk = r->property("route_key").toString();
+      if (!rk.isEmpty() && rk != key &&
+          route_prefetch_pending_.find(rk) != route_prefetch_pending_.end()) {
+        r->abort();
+        route_prefetch_pending_.erase(rk);
+      }
+    }
+  }
+
+  if ((int)route_prefetch_pending_.size() >= kMaxRoutePrefetchPending) {
+    if (prioritize_latest) {
+      const auto replies = route_net_->findChildren<QNetworkReply *>();
+      for (QNetworkReply *r : replies) {
+        if (!r)
+          continue;
+        const QString rk = r->property("route_key").toString();
+        if (!rk.isEmpty() && rk != key &&
+            route_prefetch_pending_.find(rk) != route_prefetch_pending_.end()) {
+          r->abort();
+          route_prefetch_pending_.erase(rk);
+          break;
+        }
+      }
+    }
+    if ((int)route_prefetch_pending_.size() >= kMaxRoutePrefetchPending) {
+      return;
+    }
+  }
+
   QString url = map_route_osrm_url(lat0, lon0, lat1, lon1);
 
   QNetworkRequest req{QUrl(url)};
-  req.setRawHeader("User-Agent", "bds-sim-map-gui/1.0");
+  req.setRawHeader("User-Agent", "gnss-sim-map-gui/1.0");
+  req.setAttribute(QNetworkRequest::HttpPipeliningAllowedAttribute, true);
+  req.setPriority(prioritize_latest ? QNetworkRequest::HighPriority
+                                    : QNetworkRequest::NormalPriority);
 
   QNetworkReply *reply = route_net_->get(req);
   reply->setProperty("route_key", key);
@@ -199,12 +420,21 @@ void MapWidget::onRouteReply(QNetworkReply *reply) {
       if (route_ready) {
         auto it = route_prefetch_cache_.find(key);
         if (it != route_prefetch_cache_.end() && it->second.size() >= 2) {
+          double vmax_mps = 20.0;
+          {
+            std::lock_guard<std::mutex> lk(g_ctrl_mtx);
+            vmax_mps = g_ctrl.path_vmax_kmh / 3.6;
+          }
+          const double route_len_m = preview_polyline_length_m(it->second);
+          preview_mode_ = PATH_MODE_PLAN;
           preview_polyline_ = it->second;
           has_preview_segment_ = true;
+          preview_plan_route_ready_ = true;
+          (void)route_len_m;
           plan_status_ = tr_text("path.road_ready").toStdString();
         }
       } else {
-        has_preview_segment_ = false;
+        preview_plan_route_ready_ = false;
         plan_status_ = tr_text("path.road_failed").toStdString();
       }
       update(osm_panel_rect_);
@@ -244,6 +474,14 @@ bool MapWidget::get_current_plan_anchor(double *lat_deg, double *lon_deg) {
 }
 
 void MapWidget::set_preview_target(const QPoint &pos, int mode) {
+  {
+    std::lock_guard<std::mutex> lk(g_ctrl_mtx);
+    if (!g_ctrl.running_ui) {
+      plan_status_ = "Path planning available after START";
+      return;
+    }
+  }
+
   double lat = 0.0;
   double lon = 0.0;
   if (!panel_point_to_llh(pos, &lat, &lon))
@@ -261,6 +499,7 @@ void MapWidget::set_preview_target(const QPoint &pos, int mode) {
   preview_end_lat_deg_ = lat;
   preview_end_lon_deg_ = lon;
   preview_mode_ = mode;
+  preview_plan_route_ready_ = false;
   preview_polyline_.clear();
   preview_route_key_.clear();
 
@@ -277,21 +516,15 @@ void MapWidget::set_preview_target(const QPoint &pos, int mode) {
     vmax_mps = g_ctrl.path_vmax_kmh / 3.6;
   }
   const double max_segment_m = compute_dynamic_segment_cap_m(vmax_mps);
-
-  if (raw_dist_m > max_segment_m) {
-    const double clamp_m = std::max(1.0, max_segment_m - 0.5);
-    project_point_to_distance_cap(slat, slon, lat, lon, clamp_m, &lat, &lon);
-    preview_end_lat_deg_ = lat;
-    preview_end_lon_deg_ = lon;
-    map_gui_push_alert(0, "Selected point exceeded range cap; snapped to nearest cap boundary.");
-  }
+  (void)max_segment_m;
 
   if (mode == PATH_MODE_LINE) {
     preview_polyline_.push_back({wrap_lon_deg(slon), slat});
     preview_polyline_.push_back({wrap_lon_deg(lon), lat});
     has_preview_segment_ = true;
+    preview_plan_route_ready_ = true;
     plan_status_ = tr_text("path.line_ready").toStdString();
-    start_route_prefetch(slat, slon, lat, lon);
+    start_route_prefetch(slat, slon, lat, lon, false);
     return;
   }
 
@@ -301,24 +534,109 @@ void MapWidget::set_preview_target(const QPoint &pos, int mode) {
   if (it != route_prefetch_cache_.end() && it->second.size() >= 2) {
     preview_polyline_ = it->second;
     has_preview_segment_ = true;
+    preview_plan_route_ready_ = true;
+    const double route_len_m = preview_polyline_length_m(preview_polyline_);
+    (void)route_len_m;
     plan_status_ = tr_text("path.road_ready_cached").toStdString();
     return;
   }
 
-  start_route_prefetch(slat, slon, lat, lon);
-  has_preview_segment_ = false;
+  // PLAN mode should only render real smart-route geometry once available.
+  has_preview_segment_ = true;
+
+  const bool already_pending =
+      route_prefetch_pending_.find(key) != route_prefetch_pending_.end();
+
+  if (!already_pending) {
+    // Show an immediate straight fallback while async smart-route is loading.
+    // This keeps interaction latency near line-mode without blocking UI.
+    preview_polyline_.push_back({wrap_lon_deg(slon), slat});
+    preview_polyline_.push_back({wrap_lon_deg(lon), lat});
+
+    bool allow_dispatch = true;
+    const auto now_tp = std::chrono::steady_clock::now();
+    if (std::isfinite(last_route_prefetch_end_lat_deg_) &&
+        std::isfinite(last_route_prefetch_end_lon_deg_)) {
+      const int dt_ms = (int)std::chrono::duration_cast<std::chrono::milliseconds>(
+                            now_tp - last_route_prefetch_tp_)
+                            .count();
+      const double moved_m = distance_m_approx(
+          last_route_prefetch_end_lat_deg_, last_route_prefetch_end_lon_deg_,
+          lat, lon);
+      if (dt_ms >= 0 && dt_ms < route_prefetch_min_interval_ms_ &&
+          moved_m < route_prefetch_min_move_m_) {
+        allow_dispatch = false;
+      }
+    }
+
+    if (allow_dispatch) {
+      start_route_prefetch(slat, slon, lat, lon, true);
+      last_route_prefetch_tp_ = now_tp;
+      last_route_prefetch_end_lat_deg_ = lat;
+      last_route_prefetch_end_lon_deg_ = lon;
+    }
+  }
   plan_status_ = tr_text("path.road_loading").toStdString();
 }
 
 void MapWidget::confirm_preview_segment() {
+  const auto confirm_begin_tp = std::chrono::steady_clock::now();
+  auto confirm_elapsed_ms = [&]() -> long long {
+    return (long long)std::llround(
+        std::chrono::duration<double, std::milli>(
+            std::chrono::steady_clock::now() - confirm_begin_tp)
+            .count());
+  };
+
+  if (preview_confirm_in_progress_) {
+    plan_status_ = tr_text("path.confirming").toStdString();
+    update(osm_panel_rect_);
+    update(right_bottom_region());
+    return;
+  }
+
+  struct ConfirmGuard {
+    bool *flag = nullptr;
+    ~ConfirmGuard() {
+      if (flag) {
+        *flag = false;
+      }
+      QApplication::restoreOverrideCursor();
+    }
+  };
+  preview_confirm_in_progress_ = true;
+  QApplication::setOverrideCursor(Qt::BusyCursor);
+  ConfirmGuard confirm_guard{&preview_confirm_in_progress_};
+
+  plan_status_ = tr_text("path.confirming").toStdString();
+  update(osm_panel_rect_);
+  update(right_bottom_region());
+  if (QCoreApplication *app = QCoreApplication::instance()) {
+    if (QThread::currentThread() == app->thread()) {
+      app->processEvents(QEventLoop::ExcludeUserInputEvents, 2);
+    }
+  }
+
+  {
+    std::lock_guard<std::mutex> lk(g_ctrl_mtx);
+    if (!g_ctrl.running_ui) {
+      plan_status_ = "Path planning available after START";
+      return;
+    }
+  }
+
   if (!has_preview_segment_) {
     plan_status_ = tr_text("path.no_preview").toStdString();
     return;
   }
 
+  int queued_chunks_now = 0;
   {
     std::lock_guard<std::mutex> lk(g_path_seg_mtx);
-    if ((int)g_path_segments.size() >= kMaxQueuedSegments) {
+    for (const auto &seg : g_path_segments) {
+      queued_chunks_now += std::max(1, seg.chunk_total - seg.chunk_done);
+    }
+    if (queued_chunks_now >= kMaxQueuedSegments) {
       plan_status_ = tr_text("path.queue_full").toStdString();
       return;
     }
@@ -326,7 +644,7 @@ void MapWidget::confirm_preview_segment() {
 
   char file_path[256] = {0};
   std::vector<LonLat> seg_polyline;
-  const double segment_dist_m =
+  double segment_dist_m =
       distance_m_approx(preview_start_lat_deg_, preview_start_lon_deg_,
                         preview_end_lat_deg_, preview_end_lon_deg_);
   double vmax_mps = 20.0;
@@ -337,23 +655,112 @@ void MapWidget::confirm_preview_segment() {
     accel_mps2 = g_ctrl.path_accel_mps2;
   }
   const double max_segment_m = compute_dynamic_segment_cap_m(vmax_mps);
+  const double chunk_target_m = std::max(2000.0, max_segment_m);
 
-  if (segment_dist_m > max_segment_m) {
-    char msg[160] = {0};
-    std::snprintf(msg, sizeof(msg), "Path too long (adaptive cap %.1f km). Split into shorter segments.",
-                  max_segment_m / 1000.0);
-    plan_status_ = msg;
-    map_gui_push_alert(1, msg);
-    has_preview_segment_ = false;
-    preview_polyline_.clear();
-    preview_route_key_.clear();
-    return;
+  if (preview_mode_ == PATH_MODE_PLAN && preview_polyline_.size() >= 2) {
+    segment_dist_m = preview_polyline_length_m(preview_polyline_);
   }
 
   // In PLAN mode, never fallback to synchronous route fetch here.
   // Wait until async prefetch finishes, otherwise UI may block.
-  if (preview_mode_ == PATH_MODE_PLAN && preview_polyline_.size() < 2) {
+  if (preview_mode_ == PATH_MODE_PLAN && !preview_plan_route_ready_) {
     plan_status_ = tr_text("path.road_loading").toStdString();
+    return;
+  }
+
+  if (segment_dist_m > chunk_target_m) {
+    std::vector<LonLat> source_polyline;
+    if (preview_mode_ == PATH_MODE_PLAN && preview_polyline_.size() >= 2) {
+      source_polyline = preview_polyline_;
+    } else {
+      source_polyline.push_back({wrap_lon_deg(preview_start_lon_deg_),
+                                 preview_start_lat_deg_});
+      source_polyline.push_back({wrap_lon_deg(preview_end_lon_deg_),
+                                 preview_end_lat_deg_});
+    }
+
+    std::vector<std::vector<LonLat>> chunks;
+    if (!split_polyline_by_cap(source_polyline, chunk_target_m, &chunks)) {
+      plan_status_ = tr_text("path.build_failed").toStdString();
+      return;
+    }
+
+    const int free_slots = std::max(0, kMaxQueuedSegments - queued_chunks_now);
+    if ((int)chunks.size() > free_slots) {
+      char msg[180] = {0};
+      std::snprintf(msg, sizeof(msg),
+                    "Route needs %d segments (queue free %d). Reduce distance or clear queue.",
+                    (int)chunks.size(), free_slots);
+      plan_status_ = msg;
+      map_gui_push_alert(1, msg);
+      return;
+    }
+
+    const LonLat user_first = source_polyline.front();
+    const LonLat user_last = source_polyline.back();
+
+    for (const auto &chunk : chunks) {
+      if (chunk.size() < 2)
+        continue;
+      char split_file_path[256] = {0};
+      std::vector<LonLat> built_polyline;
+      const LonLat &first = chunk.front();
+      const LonLat &last = chunk.back();
+      const int out_mode = preview_mode_;
+      const std::vector<LonLat> *out_plan_poly =
+          (out_mode == PATH_MODE_PLAN) ? &chunk : nullptr;
+      if (!build_segment_path_file(first.lat, first.lon, last.lat, last.lon,
+                                   out_mode, vmax_mps, accel_mps2, out_plan_poly,
+                                   split_file_path, &built_polyline)) {
+        plan_status_ = tr_text("path.build_failed").toStdString();
+        return;
+      }
+      if (!enqueue_path_file_name(split_file_path)) {
+        plan_status_ = tr_text("path.queue_reject").toStdString();
+        return;
+      }
+
+      if (QCoreApplication *app = QCoreApplication::instance()) {
+        if (QThread::currentThread() == app->thread()) {
+          app->processEvents(QEventLoop::AllEvents, 2);
+        }
+      }
+    }
+
+    GuiPathSegment ui_seg{};
+    ui_seg.start_lat_deg = user_first.lat;
+    ui_seg.start_lon_deg = user_first.lon;
+    ui_seg.end_lat_deg = user_last.lat;
+    ui_seg.end_lon_deg = user_last.lon;
+    ui_seg.mode = preview_mode_;
+    ui_seg.state = PATH_SEG_QUEUED;
+    ui_seg.chunk_total = std::max(1, (int)chunks.size());
+    ui_seg.chunk_done = 0;
+    ui_seg.polyline = std::move(source_polyline);
+    std::snprintf(ui_seg.path_file, sizeof(ui_seg.path_file), "%s", "<split>");
+
+    {
+      std::lock_guard<std::mutex> lk(g_path_seg_mtx);
+      g_path_segments.push_back(std::move(ui_seg));
+    }
+
+    has_preview_segment_ = false;
+    preview_polyline_.clear();
+    preview_route_key_.clear();
+    if (chunks.size() <= 1) {
+      char msg[160] = {0};
+      std::snprintf(msg, sizeof(msg), "Segment confirmed (%lld ms).",
+                    confirm_elapsed_ms());
+      plan_status_ = msg;
+      map_gui_push_alert(0, msg);
+    } else {
+      char msg[160] = {0};
+      std::snprintf(msg, sizeof(msg),
+                    "Segment confirmed (auto-split %d parts, %lld ms).",
+                    (int)chunks.size(), confirm_elapsed_ms());
+      plan_status_ = msg;
+      map_gui_push_alert(0, msg);
+    }
     return;
   }
 
@@ -377,6 +784,8 @@ void MapWidget::confirm_preview_segment() {
   seg.end_lon_deg = preview_end_lon_deg_;
   seg.mode = preview_mode_;
   seg.state = PATH_SEG_QUEUED;
+  seg.chunk_total = 1;
+  seg.chunk_done = 0;
   seg.polyline = std::move(seg_polyline);
   snprintf(seg.path_file, sizeof(seg.path_file), "%s", file_path);
 
@@ -387,17 +796,36 @@ void MapWidget::confirm_preview_segment() {
 
   has_preview_segment_ = false;
   preview_polyline_.clear();
-  plan_status_ = tr_text("path.segment_queued").toStdString();
+  {
+    char msg[160] = {0};
+    std::snprintf(msg, sizeof(msg), "Segment confirmed (%lld ms).",
+                  confirm_elapsed_ms());
+    plan_status_ = msg;
+    map_gui_push_alert(0, msg);
+  }
 }
 
 void MapWidget::try_undo_last_segment() {
-  char removed[256] = {0};
-  if (!delete_last_queued_path(removed, sizeof(removed))) {
-    plan_status_ = tr_text("path.undo_fail").toStdString();
-    return;
+  int undo_chunks = 0;
+  {
+    std::lock_guard<std::mutex> lk(g_path_seg_mtx);
+    if (g_path_segments.empty() ||
+        g_path_segments.back().state != PATH_SEG_QUEUED) {
+      plan_status_ = tr_text("path.undo_fail").toStdString();
+      return;
+    }
+    undo_chunks = std::max(1, g_path_segments.back().chunk_total);
   }
 
-  map_gui_notify_path_segment_undo();
+  for (int i = 0; i < undo_chunks; ++i) {
+    char removed[256] = {0};
+    if (!delete_last_queued_path(removed, sizeof(removed))) {
+      plan_status_ = tr_text("path.undo_fail").toStdString();
+      return;
+    }
+    map_gui_notify_path_segment_undo();
+  }
+
   has_preview_segment_ = false;
   preview_polyline_.clear();
   plan_status_ = tr_text("path.undo_ok").toStdString();
@@ -439,7 +867,15 @@ bool MapWidget::lonlat_to_osm_screen(double lat_deg, double lon_deg,
 void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
   osm_panel_rect_ = panel;
   if (panel.width() < 8 || panel.height() < 8) return;
+  const auto map_perf_start_tp = std::chrono::steady_clock::now();
+  double map_tile_fetch_ms = 0.0;
+  double map_bg_compose_ms = 0.0;
+  double map_overlay_draw_ms = 0.0;
   request_visible_tiles();
+  map_tile_fetch_ms =
+      std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - map_perf_start_tp)
+          .count();
   bool running_ui = false;
   bool jam_selected = false;
   int interference_selection = -1;
@@ -449,9 +885,6 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
     interference_selection = g_ctrl.interference_selection;
     jam_selected = (interference_selection == 1);
   }
-
-  // Keep map free-pan even after selecting a point in crossbow mode.
-  crossbow_center_locked_ = false;
 
   // Mode transition hook: switching from spoof/jam to cross should immediately
   // activate cross-specific interaction state.
@@ -548,15 +981,52 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
 
   MapOsmPanelInput osm_in;
   std::vector<DjiNfzZone> visible_nfz_zones;
+  int fetched_nfz_count = 0;
   if (dji_nfz_mgr_ && dji_nfz_mgr_->is_enabled()) {
     const auto &all_nfz_zones = dji_nfz_mgr_->get_zones();
+    fetched_nfz_count = (int)all_nfz_zones.size();
     visible_nfz_zones.reserve(all_nfz_zones.size());
+
+    const double left = osm_center_px_x_ - (double)panel.width() * 0.5;
+    const double right = left + (double)panel.width();
+    const double top = osm_center_px_y_ - (double)panel.height() * 0.5;
+    const double bottom = top + (double)panel.height();
+    const double lat_top = osm_world_y_to_lat(top, osm_zoom_);
+    const double lat_bot = osm_world_y_to_lat(bottom, osm_zoom_);
+    const double lon_left = osm_world_x_to_lon(left, osm_zoom_);
+    const double lon_right = osm_world_x_to_lon(right, osm_zoom_);
+    const double lat_min = std::min(lat_top, lat_bot);
+    const double lat_max = std::max(lat_top, lat_bot);
+    const double lat_expand = (lat_max - lat_min) * 0.35 + 0.08;
+
+    auto lon_in_expanded = [&](double lon) {
+      double d = wrap_lon_deg(lon - lon_left);
+      const double span = std::abs(wrap_lon_deg(lon_right - lon_left));
+      const double expand = span * 0.35 + 0.12;
+      if (d < 0.0)
+        d = -d;
+      return d <= (span + expand);
+    };
+
     for (const auto &zone : all_nfz_zones) {
       const int layer_idx = nfz_zone_layer_index(zone);
-      if (layer_idx >= 0 && layer_idx < (int)nfz_layer_visible_.size() &&
-          nfz_layer_visible_[layer_idx]) {
-        visible_nfz_zones.push_back(zone);
+      if (layer_idx < 0 || layer_idx >= (int)nfz_layer_visible_.size() ||
+          !nfz_layer_visible_[layer_idx]) {
+        continue;
       }
+
+      if (zone.has_outer_bbox) {
+        if (zone.outer_max_lat < (lat_min - lat_expand) ||
+            zone.outer_min_lat > (lat_max + lat_expand)) {
+          continue;
+        }
+        if (!lon_in_expanded(zone.outer_min_lon) &&
+            !lon_in_expanded(zone.outer_max_lon) &&
+            !lon_in_expanded(0.5 * (zone.outer_min_lon + zone.outer_max_lon))) {
+          continue;
+        }
+      }
+      visible_nfz_zones.push_back(zone);
     }
   }
 
@@ -574,11 +1044,15 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
     return this->lonlat_to_osm_screen(lat, lon, panel, out);
   };
   osm_in.nfz_enabled = dji_on;
+  osm_in.show_nfz_diag = nfz_diag_visible_;
+  osm_in.dji_nfz_fetched_count = fetched_nfz_count;
+  osm_in.dji_nfz_visible_count = (int)visible_nfz_zones.size();
   osm_in.has_selected_llh = has_selected_llh_;
   osm_in.selected_lat_deg = selected_lat_deg_;
   osm_in.selected_lon_deg = selected_lon_deg_;
   osm_in.has_preview_segment = has_preview_segment_;
   osm_in.preview_mode = map_osm_panel_path_mode_from_int(preview_mode_);
+  osm_in.preview_plan_route_ready = preview_plan_route_ready_;
   osm_in.preview_start_lat_deg = preview_start_lat_deg_;
   osm_in.preview_start_lon_deg = preview_start_lon_deg_;
   osm_in.preview_end_lat_deg = preview_end_lat_deg_;
@@ -618,6 +1092,7 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
       osm_bg_cache_center_px_x_ != osm_center_px_x_ ||
       osm_bg_cache_center_px_y_ != osm_center_px_y_ ||
       osm_bg_cache_dark_map_mode_ != dark_map_mode_;
+  const auto bg_compose_start_tp = std::chrono::steady_clock::now();
   if (bg_needs_rebuild) {
     osm_bg_cache_size_ = panel.size();
     osm_bg_cache_zoom_ = osm_zoom_;
@@ -637,39 +1112,18 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
   if (!osm_bg_cache_.isNull()) {
     p.drawImage(panel.topLeft(), osm_bg_cache_);
   }
+  map_bg_compose_ms =
+      std::chrono::duration<double, std::milli>(
+          std::chrono::steady_clock::now() - bg_compose_start_tp)
+          .count();
 
-  // After START, visualize adaptive max segment distance as a light area with
-  // dashed boundary so path planning is constrained to in-range points.
-  if (running_ui && !jam_selected && has_selected_llh_) {
-    QPoint anchor_px;
-    if (lonlat_to_osm_screen(selected_lat_deg_, selected_lon_deg_, panel,
-                             &anchor_px)) {
-      double vmax_mps = 20.0;
-      {
-        std::lock_guard<std::mutex> lk(g_ctrl_mtx);
-        vmax_mps = g_ctrl.path_vmax_kmh / 3.6;
-      }
-      const double max_segment_m = compute_dynamic_segment_cap_m(vmax_mps);
-      const double mpp = meters_per_pixel_at_lat(selected_lat_deg_, osm_zoom_);
-      const double radius_px =
-          std::max(4.0, max_segment_m / std::max(0.01, mpp));
-
-      p.save();
-      p.setClipRect(panel);
-      p.setPen(Qt::NoPen);
-      p.setBrush(QColor(160, 205, 255, 36));
-      p.drawEllipse(QPointF(anchor_px), radius_px, radius_px);
-      p.setPen(QPen(QColor(185, 225, 255, 190), 2.0, Qt::DashLine));
-      p.setBrush(Qt::NoBrush);
-      p.drawEllipse(QPointF(anchor_px), radius_px, radius_px);
-      p.restore();
-    }
-  }
+  const auto overlay_draw_start_tp = std::chrono::steady_clock::now();
 
   MapOsmPanelState osm_out;
   map_draw_osm_panel_overlay(p, osm_in, &osm_out);
   lang_btn_rect_ = osm_out.lang_btn_rect;
   back_btn_rect_ = osm_out.back_btn_rect;
+  osm_recenter_btn_rect_ = osm_out.recenter_btn_rect;
   nfz_btn_rect_ = osm_out.nfz_btn_rect;
   dark_mode_btn_rect_ = osm_out.dark_mode_btn_rect;
   tutorial_toggle_rect_ = osm_out.tutorial_toggle_rect;
@@ -1167,6 +1621,73 @@ void MapWidget::draw_osm_panel(QPainter &p, const QRect &panel) {
     } else {
       // No center chosen yet — show activation hint.
       sync_crossbow_ctrl_flags(false, false);
+    }
+  }
+
+  if (perf_map_profile_enabled_) {
+    const auto perf_now = std::chrono::steady_clock::now();
+    map_overlay_draw_ms =
+      std::chrono::duration<double, std::milli>(perf_now - overlay_draw_start_tp).count();
+    const double map_ms =
+        std::chrono::duration<double, std::milli>(perf_now - map_perf_start_tp).count();
+
+    if (perf_map_window_count_ < (int)perf_map_window_ms_.size()) {
+      perf_map_window_ms_[perf_map_window_count_++] = map_ms;
+      perf_map_window_sum_ms_ += map_ms;
+    } else {
+      const double old = perf_map_window_ms_[perf_map_window_head_];
+      perf_map_window_ms_[perf_map_window_head_] = map_ms;
+      perf_map_window_head_ = (perf_map_window_head_ + 1) % (int)perf_map_window_ms_.size();
+      perf_map_window_sum_ms_ += map_ms - old;
+    }
+    perf_map_window_max_ms_ = std::max(perf_map_window_max_ms_, map_ms);
+    perf_map_tile_sum_ms_ += map_tile_fetch_ms;
+    perf_map_bg_sum_ms_ += map_bg_compose_ms;
+    perf_map_overlay_sum_ms_ += map_overlay_draw_ms;
+    perf_map_tile_max_ms_ = std::max(perf_map_tile_max_ms_, map_tile_fetch_ms);
+    perf_map_bg_max_ms_ = std::max(perf_map_bg_max_ms_, map_bg_compose_ms);
+    perf_map_overlay_max_ms_ = std::max(perf_map_overlay_max_ms_, map_overlay_draw_ms);
+    perf_map_window_frames_ += 1;
+
+    if (perf_map_report_tp_ == std::chrono::steady_clock::time_point{}) {
+      perf_map_report_tp_ = perf_now;
+    }
+    const auto dt_ms =
+        std::chrono::duration_cast<std::chrono::milliseconds>(perf_now - perf_map_report_tp_)
+            .count();
+    if (dt_ms >= 1000 && perf_map_window_count_ > 0) {
+      const double avg_ms = perf_map_window_sum_ms_ / (double)perf_map_window_count_;
+
+      std::array<double, 256> sorted = perf_map_window_ms_;
+      std::sort(sorted.begin(), sorted.begin() + perf_map_window_count_);
+      const int p95_idx = std::max(
+          0, std::min(perf_map_window_count_ - 1, (int)std::ceil(perf_map_window_count_ * 0.95) - 1));
+      const double p95_ms = sorted[p95_idx];
+      const double fps = (double)perf_map_window_frames_ * 1000.0 / (double)dt_ms;
+            const double tile_avg_ms = perf_map_tile_sum_ms_ / (double)perf_map_window_count_;
+            const double bg_avg_ms = perf_map_bg_sum_ms_ / (double)perf_map_window_count_;
+            const double overlay_avg_ms = perf_map_overlay_sum_ms_ / (double)perf_map_window_count_;
+
+      fprintf(stderr,
+              "[perf][map] fps=%.1f total(avg/p95/max)=%.2f/%.2f/%.2fms tile(avg/max)=%.2f/%.2fms bg(avg/max)=%.2f/%.2fms overlay(avg/max)=%.2f/%.2fms tiles_pending=%zu tile_cache=%zu\n",
+              fps, avg_ms, p95_ms, perf_map_window_max_ms_,
+              tile_avg_ms, perf_map_tile_max_ms_,
+              bg_avg_ms, perf_map_bg_max_ms_,
+              overlay_avg_ms, perf_map_overlay_max_ms_,
+              tile_pending_.size(), tile_cache_.size());
+
+      perf_map_report_tp_ = perf_now;
+      perf_map_window_count_ = 0;
+      perf_map_window_head_ = 0;
+      perf_map_window_sum_ms_ = 0.0;
+      perf_map_window_max_ms_ = 0.0;
+      perf_map_tile_sum_ms_ = 0.0;
+      perf_map_bg_sum_ms_ = 0.0;
+      perf_map_overlay_sum_ms_ = 0.0;
+      perf_map_tile_max_ms_ = 0.0;
+      perf_map_bg_max_ms_ = 0.0;
+      perf_map_overlay_max_ms_ = 0.0;
+      perf_map_window_frames_ = 0;
     }
   }
 }

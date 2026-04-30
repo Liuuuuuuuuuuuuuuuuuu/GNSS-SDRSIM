@@ -85,6 +85,12 @@ bool map_osm_handle_press(const QPoint &pos, Qt::MouseButton button,
         if (actions.update_rect) actions.update_rect(rects.osm_panel_rect);
         return true;
       }
+      if (running_ui && !rects.recenter_btn_rect.isEmpty() &&
+          rects.recenter_btn_rect.contains(pos)) {
+        if (actions.recenter_to_current_point) actions.recenter_to_current_point();
+        if (actions.update_rect) actions.update_rect(rects.osm_panel_rect);
+        return true;
+      }
       if (state && state->dragging_osm && state->drag_moved_osm && state->drag_last_pos) {
         *state->dragging_osm = true;
         *state->drag_moved_osm = false;

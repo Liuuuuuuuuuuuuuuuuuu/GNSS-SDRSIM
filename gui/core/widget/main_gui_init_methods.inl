@@ -74,7 +74,7 @@ void MapWidget::init_search_and_geo_modules() {
 
   {
     QNetworkRequest req(QUrl("https://ipapi.co/json/"));
-    req.setRawHeader("User-Agent", "bds-sim-map-gui/1.0");
+    req.setRawHeader("User-Agent", "gnss-sim-map-gui/1.0");
     QNetworkReply *reply = geo_net_->get(req);
     connect(reply, &QNetworkReply::finished, this, [this, reply]() {
       if (reply->error() == QNetworkReply::NoError) {

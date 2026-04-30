@@ -8,9 +8,9 @@ OBJ_DIR ?= build
 CUDA_OBJ_DIR ?= $(OBJ_DIR)/cuda
 JOBS ?= $(shell nproc)
 
-# Default to 8-way parallel builds unless user already passed -j/--jobs.
+# Default to all logical CPUs unless user already passed -j/--jobs.
 ifeq ($(filter -j% --jobs=%,$(MAKEFLAGS)),)
-MAKEFLAGS += -j8
+MAKEFLAGS += -j$(JOBS)
 endif
 
 ifneq ($(strip $(CCACHE)),)
@@ -32,7 +32,7 @@ endif
 GUI_SRC_DIRS := $(shell find gui -type d)
 INCLUDE_DIRS := $(shell find include -type d 2>/dev/null)
 GUI_CPP_SRCS := $(shell find gui -type f -name '*.cpp')
-COMMON_SRCS = src/apps/cli/main.c src/core/globals.c src/core/bch.c src/nav/navbits.c src/core/channel.c src/nav/rinex.c src/nav/orbits.c src/geo/coord.c src/geo/path.c src/nav/iono.c src/runtime/gnss_rx.c \
+COMMON_SRCS = src/apps/cli/main.c src/core/globals.c src/core/bch.c src/nav/navbits.c src/core/channel.c src/nav/rinex.c src/nav/rinex_catalog.c src/nav/orbits.c src/geo/coord.c src/geo/path.c src/nav/iono.c src/runtime/gnss_rx.c \
 			 src/runtime/usrp_wrapper.cpp src/runtime/rid_rx.cpp src/runtime/wifi_rid_rx.c src/runtime/ble_rid_rx.c src/apps/gui/main_gui.cpp cuda/cuda_runtime_info.c $(GUI_CPP_SRCS)
 COMMON_OBJS = $(addprefix $(OBJ_DIR)/,$(COMMON_SRCS))
 COMMON_OBJS := $(COMMON_OBJS:.c=.o)
@@ -65,43 +65,96 @@ GENCODE_ALL = $(strip \
 	$(GENCODE_BLACKWELL))
 GENCODE_FAT = $(strip $(GENCODE_ALL) $(PTX_FALLBACK))
 CUDA_MULTI_OBJ = $(CUDA_OBJ_DIR)/bdssim_multi.o
-FAT_BIN = $(BIN_DIR)/bds-sim-fat
+FAT_BIN = $(BIN_DIR)/gnss-sim-fat
 WIFI_RID_BRIDGE = $(BIN_DIR)/wifi-rid-bridge
 WIFI_RID_TSHARK_BRIDGE = $(BIN_DIR)/wifi-rid-tshark-bridge
 BLE_RID_BRIDGE  = $(BIN_DIR)/ble-rid-bridge
-LAUNCHER_TEMPLATE = scripts/launcher/bds-sim-launcher.sh
+GNSS_SPLASH_BIN = $(BIN_DIR)/gnss-loading-splash
+LAUNCHER_TEMPLATE = scripts/launcher/gnss-sim-launcher.sh
 REBUILD_SCRIPT = scripts/build/rebuild-local.sh
 SUPPORT_CHECK_SCRIPT = scripts/build/check-gpu-series-support.sh
+GNSS_LAUNCHER = gnss-sim
 
-.PHONY: all release all-gpu-binaries check-gpu-series-support print-gencode-fat clean \
-	cuda-smoke cuda-doctor cuda-heal
-	run-wifi-auto
+.PHONY: all release rebuild all-gpu-binaries check-gpu-series-support print-gencode-fat clean \
+	cuda-smoke cuda-doctor cuda-heal package-deb package-appimage
+	run-wifi-auto install-desktop-icon
 
 SUPPORTED_GPU_BIN_NAMES =
 ifneq ($(HAS_SM_61),)
-SUPPORTED_GPU_BIN_NAMES += bds-sim-pascal
+SUPPORTED_GPU_BIN_NAMES += gnss-sim-pascal
 endif
 ifneq ($(HAS_SM_75),)
-SUPPORTED_GPU_BIN_NAMES += bds-sim-turing
+SUPPORTED_GPU_BIN_NAMES += gnss-sim-turing
 endif
 ifneq ($(HAS_SM_86),)
-SUPPORTED_GPU_BIN_NAMES += bds-sim-ampere
+SUPPORTED_GPU_BIN_NAMES += gnss-sim-ampere
 endif
 ifneq ($(HAS_SM_89),)
-SUPPORTED_GPU_BIN_NAMES += bds-sim-ada
+SUPPORTED_GPU_BIN_NAMES += gnss-sim-ada
 endif
 ifneq ($(strip $(GENCODE_BLACKWELL)),)
-SUPPORTED_GPU_BIN_NAMES += bds-sim-blackwell
+SUPPORTED_GPU_BIN_NAMES += gnss-sim-blackwell
 endif
 ifneq ($(strip $(GENCODE_MODERN)),)
-SUPPORTED_GPU_BIN_NAMES += bds-sim-modern
+SUPPORTED_GPU_BIN_NAMES += gnss-sim-modern
 endif
 
 SUPPORTED_GPU_BINS = $(addprefix $(BIN_DIR)/,$(SUPPORTED_GPU_BIN_NAMES))
 
-all: bds-sim $(WIFI_RID_BRIDGE) $(WIFI_RID_TSHARK_BRIDGE) $(BLE_RID_BRIDGE)
+# ── Dependency pre-check ────────────────────────────────────────────────────
+.PHONY: check-deps
+check-deps:
+	@ok=1; \
+	\
+	echo "[check-deps] compiler ..."; \
+	if ! command -v g++ >/dev/null 2>&1; then \
+		echo "  MISSING: g++ (install: sudo apt install build-essential)"; ok=0; \
+	fi; \
+	\
+	echo "[check-deps] NVCC ..."; \
+	if [ ! -x "$(NVCC)" ]; then \
+		echo "  MISSING: nvcc  (install CUDA Toolkit: https://developer.nvidia.com/cuda-downloads)"; ok=0; \
+	fi; \
+	\
+	echo "[check-deps] pkg-config ..."; \
+	if ! command -v pkg-config >/dev/null 2>&1; then \
+		echo "  MISSING: pkg-config (install: sudo apt install pkg-config)"; ok=0; \
+	fi; \
+	\
+	echo "[check-deps] Qt (Widgets/Network) ..."; \
+	if [ -z "$(QT_LIBS)" ]; then \
+		echo "  MISSING: Qt dev headers  (install: sudo apt install qtbase5-dev qtbase5-dev-tools)"; ok=0; \
+	fi; \
+	\
+	echo "[check-deps] libuhd ..."; \
+	if ! pkg-config --exists uhd 2>/dev/null && ! ldconfig -p 2>/dev/null | grep -q libuhd; then \
+		echo "  MISSING: libuhd  (install: sudo apt install libuhd-dev)"; ok=0; \
+	fi; \
+	\
+	echo "[check-deps] libboost_system ..."; \
+	if ! ldconfig -p 2>/dev/null | grep -q libboost_system; then \
+		echo "  MISSING: libboost_system  (install: sudo apt install libboost-system-dev)"; ok=0; \
+	fi; \
+	\
+	echo "[check-deps] libcudart ..."; \
+	if [ -z "$(CUDA_LIB_DIR)" ] || [ ! -d "$(CUDA_LIB_DIR)" ]; then \
+		echo "  MISSING: libcudart  (check CUDA Toolkit installation)"; ok=0; \
+	fi; \
+	\
+	if [ "$$ok" -eq 0 ]; then \
+		echo ""; \
+		echo "[check-deps] *** One or more dependencies are missing. Fix the above, then re-run make. ***"; \
+		exit 1; \
+	fi; \
+	echo "[check-deps] All required dependencies found."
+
+all: check-deps $(GNSS_SPLASH_BIN) $(GNSS_LAUNCHER) $(WIFI_RID_BRIDGE) $(WIFI_RID_TSHARK_BRIDGE) $(BLE_RID_BRIDGE)
 
 release:
+	@$(MAKE) -j$(JOBS) all
+
+rebuild:
+	@$(MAKE) clean
 	@$(MAKE) -j$(JOBS) all
 all-gpu-binaries: $(FAT_BIN) $(SUPPORTED_GPU_BINS)
 check-gpu-series-support: $(SUPPORT_CHECK_SCRIPT)
@@ -189,12 +242,12 @@ $(CUDA_MULTI_OBJ): src/compute/cuda/bdssim.cu
 	@if [ -z "$(GENCODE_FAT)" ]; then echo "[make] no usable gencode (SASS/PTX) found in current NVCC ($(NVCC))."; exit 2; fi
 	$(NVCC) $(NVCCFLAGS_BASE) $(GENCODE_FAT) -c $< -o $@
 
-bds-sim: Makefile $(FAT_BIN) $(SUPPORTED_GPU_BINS) $(LAUNCHER_TEMPLATE) $(REBUILD_SCRIPT)
+$(GNSS_LAUNCHER): Makefile $(FAT_BIN) $(SUPPORTED_GPU_BINS) $(LAUNCHER_TEMPLATE) $(REBUILD_SCRIPT)
 	@sed \
 		-e 's|@BIN_DIR@|$(BIN_DIR)|g' \
 		-e 's|@REBUILD_SCRIPT@|$(REBUILD_SCRIPT)|g' \
-		$(LAUNCHER_TEMPLATE) > $@
-	@chmod +x $@
+		$(LAUNCHER_TEMPLATE) > $(GNSS_LAUNCHER)
+	@chmod +x $(GNSS_LAUNCHER)
 
 $(SUPPORT_CHECK_SCRIPT):
 	@chmod +x $(SUPPORT_CHECK_SCRIPT)
@@ -206,22 +259,22 @@ $(BIN_DIR):
 $(FAT_BIN): $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
 
-$(BIN_DIR)/bds-sim-pascal: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
+$(BIN_DIR)/gnss-sim-pascal: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
 
-$(BIN_DIR)/bds-sim-turing: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
+$(BIN_DIR)/gnss-sim-turing: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
 
-$(BIN_DIR)/bds-sim-ampere: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
+$(BIN_DIR)/gnss-sim-ampere: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
 
-$(BIN_DIR)/bds-sim-ada: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
+$(BIN_DIR)/gnss-sim-ada: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
 
-$(BIN_DIR)/bds-sim-blackwell: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
+$(BIN_DIR)/gnss-sim-blackwell: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
 
-$(BIN_DIR)/bds-sim-modern: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
+$(BIN_DIR)/gnss-sim-modern: $(COMMON_OBJS) $(CUDA_MULTI_OBJ) | $(BIN_DIR)
 	$(CXX) $(CXXFLAGS) -o $@ $^ $(LIBS)
 
 $(WIFI_RID_BRIDGE): src/bridges/wifi/wifi_rid_bridge.cpp | $(BIN_DIR)
@@ -233,11 +286,24 @@ $(WIFI_RID_TSHARK_BRIDGE): src/bridges/wifi/wifi_rid_tshark_bridge.cpp | $(BIN_D
 $(BLE_RID_BRIDGE): src/bridges/ble/ble_rid_bridge.cpp | $(BIN_DIR)
 	$(CXX) -O2 -Wall -Wextra -std=c++14 -o $@ $< -lbluetooth
 
+$(GNSS_SPLASH_BIN): src/apps/tools/gnss_loading_splash.cpp | $(BIN_DIR)
+	$(CXX) $(CXXFLAGS) -o $@ $< $(QT_LIBS)
+
 clean:
 	rm -rf $(OBJ_DIR) $(BIN_DIR)
-	rm -f bds-sim bds-sim-fat bds-sim-pascal bds-sim-turing bds-sim-ampere bds-sim-ada bds-sim-blackwell bds-sim-modern
+	rm -f gnss-sim gnss-sim-fat gnss-sim-pascal gnss-sim-turing gnss-sim-ampere gnss-sim-ada gnss-sim-blackwell gnss-sim-modern
+	rm -f gnss-loading-splash
 
-run-wifi-auto: bds-sim
-	@bash scripts/wifi/run_bds_sim_wifi_auto.sh
+run-wifi-auto: $(GNSS_LAUNCHER)
+	@bash scripts/wifi/run_gnss_sim_wifi_auto.sh
+
+package-deb: all
+	@bash scripts/package/build-deb.sh
+
+package-appimage: all
+	@bash scripts/package/build-appimage.sh
+
+install-desktop-icon: all
+	@bash scripts/install/install-desktop-icon.sh
 
 -include $(DEPS)

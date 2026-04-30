@@ -4,6 +4,7 @@
 #include "gui/control/panel/control_paint.h"
 #include "gui/core/i18n/gui_i18n.h"
 #include "gui/core/i18n/gui_font_manager.h"
+#include "gui/nfz/dji_nfz_utils.h"
 
 #include <QFontMetrics>
 #include <QPen>
@@ -41,6 +42,7 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
 
     const QByteArray lang_btn_label = gui_i18n_text(in.language, "osm.lang_btn").toUtf8();
     const QByteArray back_btn_label = gui_i18n_text(in.language, "osm.back").toUtf8();
+    const QByteArray recenter_btn_label = gui_i18n_text(in.language, "osm.recenter_now").toUtf8();
     const QByteArray nfz_on_label = gui_i18n_text(in.language, "osm.nfz_on").toUtf8();
     const QByteArray nfz_off_label = gui_i18n_text(in.language, "osm.nfz_off").toUtf8();
     const QByteArray dark_btn_label = gui_i18n_text(in.language, "osm.dark").toUtf8();
@@ -52,8 +54,14 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
     const QString init_time_label = gui_i18n_text(in.language, "osm.init_time");
     const QString remaining_distance_fmt =
       gui_i18n_text(in.language, "osm.remaining_distance_fmt");
-    const QString nfz_restricted_label =
-      gui_i18n_text(in.language, "osm.legend_restricted_core");
+    const QString nfz_lvl0_label =
+      gui_i18n_text(in.language, "osm.legend_nfz_level0");
+    const QString nfz_lvl1_label =
+      gui_i18n_text(in.language, "osm.legend_nfz_level1");
+    const QString nfz_lvl2_label =
+      gui_i18n_text(in.language, "osm.legend_nfz_level2");
+    const QString nfz_lvl3_label =
+      gui_i18n_text(in.language, "osm.legend_nfz_level3");
     const QString range_cap_label =
       gui_i18n_text(in.language, "osm.legend_range_cap");
 
@@ -81,6 +89,17 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
                                  back_btn_label.constData());
     } else {
       control_draw_button(p, rr, btn_dim, btn_dim, back_btn_label.constData());
+    }
+  }
+
+  out->recenter_btn_rect = QRect(col_left_x, row2_y, btn_w, btn_h);
+  if (in.running_ui) {
+    Rect rr = qrect_to_rect(out->recenter_btn_rect);
+    if (in.receiver_valid) {
+      control_draw_button_filled(p, rr, btn_return, btn_return, QColor(8, 12, 18),
+                                 recenter_btn_label.constData());
+    } else {
+      control_draw_button(p, rr, btn_dim, btn_dim, recenter_btn_label.constData());
     }
   }
 
@@ -318,6 +337,21 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
     QFont leg_font = old_font;
     leg_font.setPointSize(old_font.pointSize() > 0 ? old_font.pointSize() : 10);
 
+    struct NfzLegendRow {
+      int layer = -1;
+      QString label;
+      bool active = true;
+    };
+    std::vector<NfzLegendRow> nfz_rows;
+    if (in.dji_on) {
+      // Always expose all NFZ layer colors in legend so the right-bottom key
+      // fully explains every map color family.
+      nfz_rows.push_back({0, nfz_lvl0_label, in.nfz_layers_rendered[0]});
+      nfz_rows.push_back({1, nfz_lvl1_label, in.nfz_layers_rendered[1]});
+      nfz_rows.push_back({2, nfz_lvl2_label, in.nfz_layers_rendered[2]});
+      nfz_rows.push_back({3, nfz_lvl3_label, in.nfz_layers_rendered[3]});
+    }
+
     const int min_leg_w = 156;
     const int max_leg_w = std::max(min_leg_w, in.panel.width() - 20);
     const int row_icon_x = 12;
@@ -334,8 +368,8 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
 
     auto content_width = [&](const QFontMetrics &row_metrics) {
       int w = 0;
-      if (in.dji_on) {
-        w = std::max(w, row_text_x + row_metrics.horizontalAdvance(nfz_restricted_label) + right_pad);
+      for (const auto &row : nfz_rows) {
+        w = std::max(w, row_text_x + row_metrics.horizontalAdvance(row.label) + right_pad);
       }
       if (in.show_range_cap_legend) {
         w = std::max(w, row_text_x + row_metrics.horizontalAdvance(range_cap_label) + right_pad);
@@ -350,8 +384,7 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
       leg_w = std::max(min_leg_w, std::min(max_leg_w, content_width(leg_fm)));
     }
 
-    int legend_rows = 0;
-    if (in.dji_on) legend_rows += 1;
+    int legend_rows = (int)nfz_rows.size();
     if (in.show_range_cap_legend) legend_rows += 1;
     leg_h = std::max(40, box_top + std::max(1, legend_rows) * row_gap + bottom_pad - 4);
 
@@ -370,15 +403,24 @@ void map_osm_draw_controls(QPainter &p, const MapOsmControlsInput &in,
     }
 
     int row_y = leg_y + box_top;
-    if (in.dji_on) {
-      p.setPen(QPen(QColor(220, 38, 38, 235), 2));
-      p.setBrush(QColor(220, 38, 38, 88));
+    for (const auto &row : nfz_rows) {
+      QColor stroke;
+      QColor fill;
+      dji_nfz_layer_colors(row.layer, &stroke, &fill);
+
+      if (!row.active) {
+        stroke.setAlpha(std::max(90, stroke.alpha() / 2));
+        fill.setAlpha(std::max(26, fill.alpha() / 2));
+      }
+
+      p.setPen(QPen(stroke, 2));
+      p.setBrush(fill);
       p.drawEllipse(leg_x + row_icon_x, row_y, icon_size, icon_size);
 
-      p.setPen(QColor("#f1f7ff"));
+      p.setPen(row.active ? QColor("#f1f7ff") : QColor(188, 203, 220, 220));
       p.drawText(QRect(leg_x + row_text_x, row_y - 1,
                        leg_w - row_text_x - right_pad, row_gap),
-                 Qt::AlignLeft | Qt::AlignVCenter, nfz_restricted_label);
+                 Qt::AlignLeft | Qt::AlignVCenter, row.label);
 
       if (out) {
         out->nfz_legend_row_rects.push_back(

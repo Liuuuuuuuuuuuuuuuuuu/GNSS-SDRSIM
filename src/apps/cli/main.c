@@ -30,6 +30,7 @@
 #include "path.h"
 #include "channel.h"
 #include "coord.h"
+#include "rinex_catalog.h"
 #include "usrp_wrapper.h"
 #include "main_gui.h"
 #include "cuda/cuda_runtime_info.h"
@@ -52,7 +53,7 @@ typedef struct {
     char path_file[256];
 } queued_path_t;
 
-#define MAX_PATH_QUEUE 5
+#define MAX_PATH_QUEUE 64
 #define INPUT_QUEUE_CAP 32
 
 typedef struct {
@@ -561,168 +562,20 @@ static void gui_report_alert(int level, const char *fmt, ...)
     map_gui_push_alert(level, buf);
 }
 
-static const char *kBncRinexDirs[] = {
-    "./BRDM",
-    "./data/ephemeris/BRDM"
-};
-
 static const char *resolve_bnc_rinex_dir(void)
 {
-    struct stat st;
-    for (size_t i = 0; i < sizeof(kBncRinexDirs) / sizeof(kBncRinexDirs[0]); ++i) {
-        const char *dir = kBncRinexDirs[i];
-        if (stat(dir, &st) == 0 && S_ISDIR(st.st_mode)) {
-            return dir;
-        }
-    }
-    return kBncRinexDirs[0];
-}
-
-static int is_leap_year(int year)
-{
-    if (year % 400 == 0) return 1;
-    if (year % 100 == 0) return 0;
-    return (year % 4 == 0) ? 1 : 0;
-}
-
-static int parse_brdc_hour_utc(const char *path, time_t *t_out)
-{
-    const char *fname = strrchr(path, '/');
-    fname = fname ? fname + 1 : path;
-
-    if (strncmp(fname, "BRDC00WRD_S_", 12) != 0) return -1;
-
-    int year = 0;
-    int doy = 0;
-    int hh = 0;
-    if (sscanf(fname + 12, "%4d%3d%2d00_01H_MN", &year, &doy, &hh) != 3) return -1;
-    if (year < 1980 || year > 2100 || hh < 0 || hh > 23) return -1;
-
-    int max_doy = is_leap_year(year) ? 366 : 365;
-    if (doy < 1 || doy > max_doy) return -1;
-
-    struct tm tmv = {0};
-    tmv.tm_year = year - 1900;
-    tmv.tm_mon = 0;
-    tmv.tm_mday = 1;
-    tmv.tm_hour = hh;
-
-    time_t t = timegm(&tmv);
-    if (t == (time_t)-1) return -1;
-    t += (time_t)(doy - 1) * 86400;
-
-    *t_out = t;
-    return 0;
-}
-
-static int rinex_contains_system_record(const char *path, char sys_prefix)
-{
-    FILE *fp = fopen(path, "r");
-    if (!fp) return 0;
-
-    char line[160];
-    while (fgets(line, sizeof(line), fp)) {
-        if (strstr(line, "END OF HEADER")) break;
-    }
-
-    while (fgets(line, sizeof(line), fp)) {
-        if (line[0] == sys_prefix && isdigit((unsigned char)line[1])) {
-            fclose(fp);
-            return 1;
-        }
-    }
-
-    fclose(fp);
-    return 0;
-}
-
-static int rinex_count_unique_system_prns(const char *path, char sys_prefix)
-{
-    FILE *fp = fopen(path, "r");
-    if (!fp) return 0;
-
-    int seen[100] = {0};
-    int count = 0;
-    char line[160];
-
-    while (fgets(line, sizeof(line), fp)) {
-        if (strstr(line, "END OF HEADER")) break;
-    }
-
-    while (fgets(line, sizeof(line), fp)) {
-        if (line[0] != sys_prefix) continue;
-        if (!isdigit((unsigned char)line[1]) || !isdigit((unsigned char)line[2])) continue;
-        int prn = (line[1] - '0') * 10 + (line[2] - '0');
-        if (prn < 0 || prn >= (int)(sizeof(seen) / sizeof(seen[0]))) continue;
-        if (!seen[prn]) {
-            seen[prn] = 1;
-            ++count;
-        }
-    }
-
-    fclose(fp);
-    return count;
-}
-
-static void find_latest_rinex_for_system(char *out, size_t size, char sys_prefix)
-{
-    const int kMinSatsPerSystem = 8;
-    out[0] = '\0';
-
-    const char *rinex_dir = resolve_bnc_rinex_dir();
-
-    DIR *dp = opendir(rinex_dir);
-    if (!dp) return;
-
-    time_t best_t = (time_t)0;
-    bool has_best = false;
-    char best_path[PATH_MAX] = {0};
-
-    struct dirent *ent = NULL;
-    while ((ent = readdir(dp)) != NULL) {
-        const char *name = ent->d_name;
-        if (name[0] == '.') continue;
-        if (strncmp(name, "BRDC00WRD_S_", 12) != 0) continue;
-
-        char full[PATH_MAX];
-        snprintf(full, sizeof(full), "%s/%s", rinex_dir, name);
-
-        struct stat st;
-        if (stat(full, &st) != 0) continue;
-        if (!S_ISREG(st.st_mode)) continue;
-
-        if (!rinex_contains_system_record(full, sys_prefix)) continue;
-        if (rinex_count_unique_system_prns(full, sys_prefix) < kMinSatsPerSystem) continue;
-
-        time_t t_file;
-        if (parse_brdc_hour_utc(full, &t_file) != 0) continue;
-
-        if (!has_best || t_file > best_t ||
-            (t_file == best_t && strcmp(full, best_path) > 0)) {
-            best_t = t_file;
-            has_best = true;
-            snprintf(best_path, sizeof(best_path), "%s", full);
-        }
-    }
-
-    closedir(dp);
-
-    if (has_best) snprintf(out, size, "%s", best_path);
+    return rinex_catalog_resolve_dir();
 }
 
 static void find_latest_rinex_paths(char *out_bds, size_t size_bds,
                                     char *out_gps, size_t size_gps)
 {
-    find_latest_rinex_for_system(out_bds, size_bds, 'C');
-    find_latest_rinex_for_system(out_gps, size_gps, 'G');
+    rinex_catalog_find_latest_paths(out_bds, size_bds, out_gps, size_gps, 8);
 }
 
 static int rinex_is_within_2h(const char *path)
 {
-    time_t t_file;
-    if (parse_brdc_hour_utc(path, &t_file) != 0) return 0;
-    time_t t_now = time(NULL);
-    return fabs(difftime(t_now, t_file)) <= 7200.0;
+    return rinex_catalog_is_within_age(path, rinex_catalog_max_age_seconds());
 }
 
 static void clear_stale_rinex_paths(char *bds_path, char *gps_path)
@@ -756,7 +609,7 @@ static int should_try_periodic_rinex_refresh(uint8_t signal_mode,
     return 1;
 }
 
-/* 只在星曆新鮮（2 小時內）時才更新 GUI 顯示；否則顯示空白 */
+/* 只在星曆新鮮（小於可用時間門檻）時才更新 GUI 顯示；否則顯示空白 */
 static void map_gui_set_rinex_names_if_fresh(const char *bds, const char *gps)
 {
     const char *show_bds = (bds && bds[0] && rinex_is_within_2h(bds)) ? bds : "";
@@ -919,6 +772,25 @@ static uint8_t normalize_signal_mode(uint8_t signal_mode, bool signal_gps)
     return signal_mode;
 }
 
+static uint8_t resolve_default_signal_mode_from_env(void)
+{
+    const char *raw = getenv("GNSS_DEFAULT_SIGNAL_MODE");
+    if (!raw || !raw[0]) {
+        raw = getenv("BDS_DEFAULT_SIGNAL_MODE");
+    }
+    if (!raw || !raw[0]) {
+        return SIG_MODE_BDS;
+    }
+
+    if (strcasecmp(raw, "gps") == 0 || strcasecmp(raw, "gps-only") == 0) {
+        return SIG_MODE_GPS;
+    }
+    if (strcasecmp(raw, "gnss") == 0 || strcasecmp(raw, "mixed") == 0 || strcasecmp(raw, "gps+bds") == 0) {
+        return SIG_MODE_MIXED;
+    }
+    return SIG_MODE_BDS;
+}
+
 static void set_cfg_defaults(sim_config_t *cfg)
 {
     memset(cfg, 0, sizeof(*cfg));
@@ -931,8 +803,8 @@ static void set_cfg_defaults(sim_config_t *cfg)
     cfg->meo_only = false;
     cfg->single_prn = 0;
     cfg->prn37_only = false;
-    cfg->signal_gps = false;
-    cfg->signal_mode = SIG_MODE_BDS;
+    cfg->signal_mode = resolve_default_signal_mode_from_env();
+    cfg->signal_gps = (cfg->signal_mode == SIG_MODE_GPS);
     cfg->interference_mode = false;
     cfg->interference_selection = 0;
     cfg->fs = mode_min_fs_hz(cfg->signal_mode);
@@ -1421,7 +1293,7 @@ int main(int argc, char *argv[])
     map_gui_set_screen_index(gui_screen_index);
 
     if (help_only) {
-        usage("./bds-sim");
+        usage("./gnss-sim");
         return 0;
     }
 
@@ -1478,13 +1350,13 @@ int main(int argc, char *argv[])
         gui_report_alert(1, "__i18n__:alert.no_valid_rinex_jam_only");
         } else if (cfg.rinex_file_bds[0] != '\0' && !rinex_is_within_2h(cfg.rinex_file_bds)) {
         fprintf(stderr,
-                "[warn] 最新星曆檔超過 2 小時，僅可使用 JAM 模式或更新 %s 後再啟動一般模式\n",
+                "[warn] 最新星曆檔超過可用時間門檻，僅可使用 JAM 模式或更新 %s 後再啟動一般模式\n",
             resolve_bnc_rinex_dir());
         gui_report_alert(1, "__i18n__:alert.rinex_stale_update_brdm");
     }
 
-    usage("./bds-sim");
-    puts("[bds-sim] 已待命，先在左上地圖點選起點，其他參數在 GUI 左下設定，再按 START");
+    usage("./gnss-sim");
+    puts("[gnss-sim] 已待命，先在左上地圖點選起點，其他參數在 GUI 左下設定，再按 START");
 
     struct timespec gui_now_ts;
     clock_gettime(CLOCK_REALTIME, &gui_now_ts);
@@ -1520,14 +1392,21 @@ int main(int argc, char *argv[])
     bool prompt_shown = false;
     time_t preview_refresh_sec = (time_t)-1;
     pthread_t input_tid;
-    if (enable_immediate_stdin_mode() != 0) {
-        fprintf(stderr, "[warn] 無法啟用逐鍵輸入模式，將回退為 Enter 送出命令\n");
-    }
-    if (pthread_create(&input_tid, NULL, stdin_reader_thread, NULL) != 0) {
-        fprintf(stderr, "[error] 無法建立輸入執行緒\n");
-        gui_report_alert(2, "__i18n__:alert.input_thread_create_failed");
-        disable_immediate_stdin_mode();
-        return 1;
+    bool input_thread_started = false;
+    const bool stdin_interactive = isatty(STDIN_FILENO) != 0;
+    if (stdin_interactive) {
+        if (enable_immediate_stdin_mode() != 0) {
+            fprintf(stderr, "[warn] 無法啟用逐鍵輸入模式，將回退為 Enter 送出命令\n");
+        }
+        if (pthread_create(&input_tid, NULL, stdin_reader_thread, NULL) != 0) {
+            fprintf(stderr, "[error] 無法建立輸入執行緒\n");
+            gui_report_alert(2, "__i18n__:alert.input_thread_create_failed");
+            disable_immediate_stdin_mode();
+            return 1;
+        }
+        input_thread_started = true;
+    } else {
+        fprintf(stderr, "[info] non-interactive launch: stdin commands disabled, GUI controls only\n");
     }
 
     while (1) {
@@ -1535,15 +1414,17 @@ int main(int argc, char *argv[])
             fast_exit_now(128 + (int)g_term_signal, "signal");
         }
 
-        if (!running && !prompt_shown) {
-            printf("\r\033[2Kbds-sim> ");
+        if (stdin_interactive && !running && !prompt_shown) {
+            printf("\r\033[2Kgnss-sim> ");
             fflush(stdout);
             prompt_shown = true;
         }
 
-        if (!input_queue_pop(line, sizeof(line))) {
+        if (input_thread_started && !input_queue_pop(line, sizeof(line))) {
             line[0] = '\0';
             if (g_input_eof) break;
+        } else if (!input_thread_started) {
+            line[0] = '\0';
         } else {
             prompt_shown = false;
         }
@@ -1777,7 +1658,7 @@ int main(int argc, char *argv[])
             }
 
             if (cmd.help) {
-                usage("./bds-sim");
+                usage("./gnss-sim");
                 if (!running) continue;
             }
         }
@@ -1970,7 +1851,7 @@ int main(int argc, char *argv[])
                 }
                 if (!rinex_is_within_2h(cfg.rinex_file_bds)) {
                     fprintf(stderr,
-                            "[error] 一般模式需要 2 小時內星曆，請先更新 %s\n",
+                        "[error] 一般模式需要在可用時間門檻內的星曆，請先更新 %s\n",
                             resolve_bnc_rinex_dir());
                     gui_report_alert(2, "__i18n__:alert.general_need_fresh_rinex");
                     map_gui_set_run_state(0);
@@ -2235,8 +2116,10 @@ int main(int argc, char *argv[])
     }
 
     g_input_stop = 1;
-    pthread_join(input_tid, NULL);
-    disable_immediate_stdin_mode();
+    if (input_thread_started) {
+        pthread_join(input_tid, NULL);
+        disable_immediate_stdin_mode();
+    }
 
     gnss_rx_cancel();
     rid_rx_stop();

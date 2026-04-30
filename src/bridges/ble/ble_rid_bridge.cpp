@@ -4,7 +4,7 @@
  * Passively scans BLE legacy advertising events, locates Service Data AD
  * type 0x16 carrying UUID 0xFFFA (ASTM F3411 / ODID), decodes the ODID
  * Location message embedded in the payload, and forwards a JSON record over
- * UDP to 127.0.0.1:<port> (default 39001) for bds-sim to consume.
+ * UDP to 127.0.0.1:<port> (default 39001) for gnss-sim to consume.
  *
  * Build:  $(CXX) -O2 -Wall -Wextra -std=c++14 -o bin/ble-rid-bridge \
  *                 src/bridges/ble/ble_rid_bridge.cpp -lbluetooth
@@ -819,7 +819,7 @@ int main(int argc, char **argv)
 
             stats.loc++;
             std::fprintf(stderr,
-                "[ble-rid-bridge] rid=1 %s id=%s lat=%.7f lon=%.7f dist=%.1fm"
+                "[ble-rid-bridge] src_mac=%s id=%s lat=%.7f lon=%.7f dist=%.1fm"
                 " brg=%.1f%s%s\n",
                 macs.c_str(), 
                 odid_data.remote_id.empty() ? "(none)" : odid_data.remote_id.c_str(),

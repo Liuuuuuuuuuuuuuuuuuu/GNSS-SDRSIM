@@ -42,7 +42,7 @@ static bool fetch_osrm_route_polyline_on_current_thread(double lat0_deg, double 
 
     QNetworkAccessManager net;
     QNetworkRequest req{QUrl(url)};
-    req.setRawHeader("User-Agent", "bds-sim-map-gui/1.0");
+    req.setRawHeader("User-Agent", "gnss-sim-map-gui/1.0");
 
     QNetworkReply *reply = net.get(req);
     QEventLoop loop;
@@ -211,7 +211,13 @@ bool build_segment_path_file(double lat0_deg, double lon0_deg,
 
     FILE *fp = std::fopen(out_path, "w");
     if (!fp) return false;
+    std::setvbuf(fp, nullptr, _IOFBF, 1 << 20);
 
+    QCoreApplication *app = QCoreApplication::instance();
+    const bool can_pump_events =
+        app && (QThread::currentThread() == app->thread());
+
+    size_t seg = 1;
     for (int i = 0; i < n_samples; ++i) {
         double t = (double)i / PATH_UPDATE_HZ;
         if (t > total_t) t = total_t;
@@ -228,7 +234,6 @@ bool build_segment_path_file(double lat0_deg, double lon0_deg,
         if (s < 0.0) s = 0.0;
         if (s > total_len) s = total_len;
 
-        size_t seg = 1;
         while (seg < cum.size() && cum[seg] < s) ++seg;
         if (seg >= cum.size()) seg = cum.size() - 1;
 
@@ -244,6 +249,12 @@ bool build_segment_path_file(double lat0_deg, double lon0_deg,
         lon = wrap_lon_deg(lon);
 
         std::fprintf(fp, "%.10f %.10f 0.0\n", lat, lon);
+
+        // Prevent UI/timer stalls when generating very long trajectories from
+        // the GUI thread (e.g., multi-hundred-km confirmations).
+        if (can_pump_events && (i % 512) == 0) {
+            app->processEvents(QEventLoop::AllEvents, 2);
+        }
     }
 
     std::fclose(fp);

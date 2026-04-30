@@ -16,6 +16,7 @@ struct MapOsmPressRects {
     QRect search_return_btn_rect;
     QRect nfz_btn_rect;
     QRect back_btn_rect;
+    QRect recenter_btn_rect;
     std::vector<QRect> nfz_legend_row_rects;
     bool show_search_return = false;
 };
@@ -35,6 +36,7 @@ struct MapOsmPressActions {
     std::function<void()> toggle_nfz;
     std::function<void(int)> toggle_nfz_layer;
     std::function<void()> try_undo_last_segment;
+    std::function<void()> recenter_to_current_point;
     std::function<void()> confirm_preview_segment;
     std::function<void()> update_all;
     std::function<void(const QRect &)> update_rect;

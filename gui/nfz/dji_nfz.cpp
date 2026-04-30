@@ -32,6 +32,7 @@ void DjiNfzManager::set_enabled(bool enabled) {
     if (!enabled_) {
         timer_->stop();
         zones_.clear(); // 關閉時清空畫面
+        if (on_update_cb_) on_update_cb_();
     } else {
         timer_->start(0); // 開啟時立刻觸發抓取
     }
@@ -45,7 +46,7 @@ void DjiNfzManager::trigger_fetch(double left_lon, double right_lon, double top_
     cur_bottom_ = bottom_lat;
     cur_zoom_ = zoom;
     
-    timer_->start(80); // 80 ms debounce — fast enough to feel immediate while still batching rapid zoom steps
+    timer_->start(40); // Lower debounce for more immediate viewport-following NFZ updates
 }
 
 void DjiNfzManager::execute_fetch() {
@@ -90,7 +91,7 @@ void DjiNfzManager::execute_fetch() {
     query.addQueryItem("zones_mode", "flysafe_website");
     // 依照現場驗證，優先對齊 Mavic 3 的圖層回傳。
     query.addQueryItem("drone", "dji-mavic-3");
-    query.addQueryItem("level", "0,1,2,3,7,8");
+    query.addQueryItem("level", "0,1,2,3,4,5,6,7,8,9,10");
 
     url.setQuery(query);
     QNetworkRequest req(url);
@@ -113,33 +114,29 @@ void DjiNfzManager::on_reply(QNetworkReply* reply) {
 
         if (doc.isObject()) {
             const QJsonArray areas = doc.object().value("data").toObject().value("areas").toArray();
-            if (!areas.isEmpty()) {
-                std::vector<DjiNfzZone> parsed_zones;
-                parsed_zones.reserve((size_t)areas.size() * 2);
+            std::vector<DjiNfzZone> parsed_zones;
+            parsed_zones.reserve((size_t)areas.size() * 2);
 
-                for (int i = 0; i < areas.size(); ++i) {
-                    const QJsonObject area = areas.at(i).toObject();
-                    const QString area_name = area.value("name").toString();
-                    const int area_level = area.value("level").toInt(2);
+            for (int i = 0; i < areas.size(); ++i) {
+                const QJsonObject area = areas.at(i).toObject();
+                const QString area_name = area.value("name").toString();
+                const int area_level = area.value("level").toInt(2);
 
-                    const QJsonArray sub_areas = area.value("sub_areas").toArray();
-                    if (!sub_areas.isEmpty()) {
-                        // 若有 sub_areas，優先使用子區塊幾何，避免父層大圓與子層跑道膠囊重疊。
-                        for (int j = 0; j < sub_areas.size(); ++j) {
-                            if (!sub_areas.at(j).isObject()) continue;
-                            dji_nfz_parse_zone_geometry(sub_areas.at(j).toObject(), area_name,
-                                                        area_level, &parsed_zones);
-                        }
-                    } else {
-                        dji_nfz_parse_zone_geometry(area, area_name, area_level, &parsed_zones);
+                const QJsonArray sub_areas = area.value("sub_areas").toArray();
+                if (!sub_areas.isEmpty()) {
+                    // 若有 sub_areas，優先使用子區塊幾何，避免父層大圓與子層跑道膠囊重疊。
+                    for (int j = 0; j < sub_areas.size(); ++j) {
+                        if (!sub_areas.at(j).isObject()) continue;
+                        dji_nfz_parse_zone_geometry(sub_areas.at(j).toObject(), area_name,
+                                                    area_level, &parsed_zones);
                     }
-                }
-
-                if (!parsed_zones.empty()) {
-                    zones_.swap(parsed_zones);
-                    if (on_update_cb_) on_update_cb_();
+                } else {
+                    dji_nfz_parse_zone_geometry(area, area_name, area_level, &parsed_zones);
                 }
             }
+
+            zones_.swap(parsed_zones);
+            if (on_update_cb_) on_update_cb_();
         }
     }
     reply->deleteLater();

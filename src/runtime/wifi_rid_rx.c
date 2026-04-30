@@ -748,7 +748,7 @@ int wifi_rid_start_from_env(void) {
 
             fprintf(stderr,
                     "[wifi_rid] bridge launch failed (iface=%s). "
-                    "Hint: run 'sudo -v' before ./bds-sim, or set "
+                    "Hint: run 'sudo -v' before ./gnss-sim, or set "
                     "BDS_WIFI_RID_SUDO_NONINTERACTIVE=0 for interactive sudo prompt.\n",
                     iface);
             return -1;

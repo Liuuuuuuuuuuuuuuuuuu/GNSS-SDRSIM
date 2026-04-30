@@ -12,7 +12,7 @@ run_auto_checks() {
   echo "[check] launcher help"
   BDS_WIFI_RID_USE_SUDO=0 \
   BDS_BLE_RID_USE_SUDO=0 \
-  ./bds-sim --help >/dev/null
+  ./gnss-sim --help >/dev/null
 
   echo "[ok] core C/C++ checks passed"
 }

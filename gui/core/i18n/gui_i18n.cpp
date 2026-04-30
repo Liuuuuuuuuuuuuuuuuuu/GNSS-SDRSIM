@@ -125,8 +125,8 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
               : QString("CUDA runtime probe failed, but strict check is disabled. Continuing.");
   }
   if (std::strcmp(key, "alert.path_queue_full_max5") == 0) {
-    return zh ? QString::fromUtf8("路徑佇列已滿（最多 5 段），新路徑已忽略。")
-              : QString("Path queue is full (max 5 segments). New path was ignored.");
+    return zh ? QString::fromUtf8("路徑佇列已滿，新路徑已忽略。")
+              : QString("Path queue is full. New path was ignored.");
   }
   if (std::strcmp(key, "alert.path_file_read_failed") == 0) {
     return zh ? QString::fromUtf8("路徑檔讀取失敗，該段已跳過。")
@@ -174,25 +174,29 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
     return zh ? QString::fromUtf8("道路預覽載入中...")
               : QString("Road preview loading...");
   }
+  if (std::strcmp(key, "path.confirming") == 0) {
+    return zh ? QString::fromUtf8("確認中，正在套用路徑...")
+              : QString("Confirming, applying path...");
+  }
   if (std::strcmp(key, "path.no_preview") == 0) {
     return zh ? QString::fromUtf8("沒有可確認的預覽路徑")
               : QString("No preview path to confirm");
   }
   if (std::strcmp(key, "path.queue_full") == 0) {
-    return zh ? QString::fromUtf8("路徑佇列已滿（最多 5 段）")
-              : QString("Path queue is full (max 5)");
+    return zh ? QString::fromUtf8("路徑佇列已滿")
+              : QString("Path queue is full");
   }
   if (std::strcmp(key, "path.build_failed") == 0) {
     return zh ? QString::fromUtf8("無法從預覽建立路徑檔")
               : QString("Failed to build path file from preview");
   }
   if (std::strcmp(key, "path.queue_reject") == 0) {
-    return zh ? QString::fromUtf8("佇列拒絕加入路徑（最多 5 段）")
-              : QString("Queue rejected path (max 5 active segments)");
+    return zh ? QString::fromUtf8("佇列拒絕加入路徑")
+              : QString("Queue rejected path");
   }
   if (std::strcmp(key, "path.segment_queued") == 0) {
-    return zh ? QString::fromUtf8("路徑段已確認並加入佇列")
-              : QString("Segment confirmed and queued");
+    return zh ? QString::fromUtf8("路徑段已確認")
+              : QString("Segment confirmed");
   }
   if (std::strcmp(key, "path.undo_fail") == 0) {
     return zh ? QString::fromUtf8("無法刪除路徑：最後一段已執行或佇列為空")
@@ -295,6 +299,9 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
   if (std::strcmp(key, "osm.back") == 0) {
     return zh ? QString::fromUtf8("路徑刪除") : QString("BACK");
   }
+  if (std::strcmp(key, "osm.recenter_now") == 0) {
+    return zh ? QString::fromUtf8("定位") : QString("LOCATE");
+  }
   if (std::strcmp(key, "osm.nfz_on") == 0) {
     return zh ? QString::fromUtf8("禁飛區") : QString("NFZ ON");
   }
@@ -328,10 +335,28 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
               : QString("REMAIN %1 km");
   }
   if (std::strcmp(key, "osm.legend_restricted_core") == 0) {
-    return zh ? QString::fromUtf8("禁飛區") : QString("Core Restricted (Red)");
+    return zh ? QString::fromUtf8("DJI 禁飛核心 (紅色)")
+              : QString("DJI NFZ Core (Red)");
+  }
+  if (std::strcmp(key, "osm.legend_nfz_level0") == 0) {
+    return zh ? QString::fromUtf8("NFZ Level 0: 限制區")
+              : QString("NFZ L0: Restricted");
+  }
+  if (std::strcmp(key, "osm.legend_nfz_level1") == 0) {
+    return zh ? QString::fromUtf8("NFZ Level 1: 授權區")
+              : QString("NFZ L1: Authorization");
+  }
+  if (std::strcmp(key, "osm.legend_nfz_level2") == 0) {
+    return zh ? QString::fromUtf8("NFZ Level 2: 警告區")
+              : QString("NFZ L2: Warning");
+  }
+  if (std::strcmp(key, "osm.legend_nfz_level3") == 0) {
+    return zh ? QString::fromUtf8("NFZ Level 3: 資訊區")
+              : QString("NFZ L3: Info");
   }
   if (std::strcmp(key, "osm.legend_range_cap") == 0) {
-    return zh ? QString::fromUtf8("距離上限區域") : QString("Range Cap Area");
+    return zh ? QString::fromUtf8("最大距離範圍")
+              : QString("Max Segment Range");
   }
   if (std::strcmp(key, "osm.lang_btn") == 0) {
     return zh ? QString::fromUtf8("中文") : QString("English");
@@ -454,6 +479,37 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
   }
   if (std::strcmp(key, "style.row.colors") == 0) {
     return zh ? QString::fromUtf8("顏色") : QString("Colors");
+  }
+  if (std::strcmp(key, "style.row.waveform_colors") == 0) {
+    return zh ? QString::fromUtf8("四波形顏色") : QString("Waveform Colors");
+  }
+  if (std::strcmp(key, "style.wave.spectrum") == 0) {
+    return zh ? QString::fromUtf8("頻譜線") : QString("Spectrum Trace");
+  }
+  if (std::strcmp(key, "style.wave.time_q") == 0) {
+    return zh ? QString::fromUtf8("時域 Q") : QString("Time Q");
+  }
+  if (std::strcmp(key, "style.wave.time_i") == 0) {
+    return zh ? QString::fromUtf8("時域 I") : QString("Time I");
+  }
+  if (std::strcmp(key, "style.wave.constellation") == 0) {
+    return zh ? QString::fromUtf8("星座點") : QString("Constellation");
+  }
+  if (std::strcmp(key, "style.pick_wave_spectrum") == 0) {
+    return zh ? QString::fromUtf8("選擇頻譜線顏色")
+              : QString("Select Spectrum Trace Color");
+  }
+  if (std::strcmp(key, "style.pick_wave_time_q") == 0) {
+    return zh ? QString::fromUtf8("選擇時域 Q 顏色")
+              : QString("Select Time Q Color");
+  }
+  if (std::strcmp(key, "style.pick_wave_time_i") == 0) {
+    return zh ? QString::fromUtf8("選擇時域 I 顏色")
+              : QString("Select Time I Color");
+  }
+  if (std::strcmp(key, "style.pick_wave_constellation") == 0) {
+    return zh ? QString::fromUtf8("選擇星座點顏色")
+              : QString("Select Constellation Color");
   }
   if (std::strcmp(key, "style.row.optional_fonts") == 0) {
     return zh ? QString::fromUtf8("選用字型") : QString("Optional Fonts");
@@ -677,8 +733,8 @@ QString gui_i18n_text(GuiLanguage language, const char *key) {
               : QString("Left Click: Straight Preview\nDirect line from start to end without road constraints.");
   }
   if (std::strcmp(key, "tutorial.callout.step2.mouse_hint") == 0) {
-    return zh ? QString::fromUtf8("右鍵：確認路徑\n確認目前預覽結果並加入路徑佇列。")
-              : QString("Right Click: Confirm Path\nConfirm the current preview and add it to the mission path queue.");
+    return zh ? QString::fromUtf8("右鍵：確認路徑\n確認目前預覽結果並套用。")
+              : QString("Right Click: Confirm Path\nConfirm and apply the current preview.");
   }
 
   if (std::strcmp(key, "tutorial.callout.step3.sky_g") == 0) {

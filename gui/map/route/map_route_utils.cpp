@@ -7,15 +7,15 @@
 
 QString map_route_cache_key(double lat0, double lon0, double lat1, double lon1) {
   return QString("%1,%2|%3,%4")
-      .arg(lat0, 0, 'f', 6)
-      .arg(wrap_lon_deg(lon0), 0, 'f', 6)
-      .arg(lat1, 0, 'f', 6)
-      .arg(wrap_lon_deg(lon1), 0, 'f', 6);
+  .arg(lat0, 0, 'f', 3)
+  .arg(wrap_lon_deg(lon0), 0, 'f', 3)
+  .arg(lat1, 0, 'f', 3)
+  .arg(wrap_lon_deg(lon1), 0, 'f', 3);
 }
 
 QString map_route_osrm_url(double lat0, double lon0, double lat1, double lon1) {
   return QString("https://router.project-osrm.org/route/v1/driving/"
-                 "%1,%2;%3,%4?overview=full&geometries=geojson")
+         "%1,%2;%3,%4?overview=simplified&geometries=geojson&steps=false&alternatives=false&annotations=false")
       .arg(lon0, 0, 'f', 7)
       .arg(lat0, 0, 'f', 7)
       .arg(lon1, 0, 'f', 7)
@@ -43,13 +43,26 @@ bool map_route_parse_osrm_geojson(const QByteArray &body,
   if (coords.size() < 2)
     return false;
 
+  constexpr int kMaxPreviewPoints = 320;
+  int stride = 1;
+  if (coords.size() > kMaxPreviewPoints) {
+    stride = std::max(1, coords.size() / kMaxPreviewPoints);
+  }
+
   std::vector<LonLat> out;
-  out.reserve((size_t)coords.size());
-  for (int i = 0; i < coords.size(); ++i) {
+  out.reserve((size_t)((coords.size() + stride - 1) / stride + 2));
+  for (int i = 0; i < coords.size(); i += stride) {
     QJsonArray pt = coords.at(i).toArray();
     if (pt.size() < 2)
       continue;
     out.push_back({pt.at(0).toDouble(), pt.at(1).toDouble()});
+  }
+
+  if ((coords.size() - 1) % stride != 0) {
+    const QJsonArray pt_last = coords.at(coords.size() - 1).toArray();
+    if (pt_last.size() >= 2) {
+      out.push_back({pt_last.at(0).toDouble(), pt_last.at(1).toDouble()});
+    }
   }
 
   if (out.size() < 2)

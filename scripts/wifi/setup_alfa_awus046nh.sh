@@ -5,7 +5,7 @@ set -euo pipefail
 #   sudo scripts/wifi/setup_alfa_awus046nh.sh [iface]
 # Then run:
 #   export BDS_WIFI_RID_IFACE=<iface-or-ifacemon>
-#   ./bds-sim
+#   ./gnss-sim
 
 detect_iface() {
   local n dev_path modalias
@@ -100,4 +100,4 @@ echo "export BDS_WIFI_RID_IFACE=${USE_IFACE}"
 echo "# optional: export BDS_WIFI_RID_BRIDGE_BIN=bin/wifi-rid-bridge"
 echo ""
 echo "Then run:"
-echo "  ./bds-sim"
+echo "  ./gnss-sim"

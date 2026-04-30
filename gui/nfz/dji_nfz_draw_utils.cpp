@@ -4,12 +4,18 @@
 
 #include <QColor>
 
+#include <array>
 #include <algorithm>
 #include <cmath>
 
 void dji_nfz_draw(QPainter &p, const QRect &panel,
                   const std::vector<DjiNfzZone> &zones, int zoom,
-                  std::function<bool(double, double, QPoint *)> coord_to_screen_fn) {
+                  std::function<bool(double, double, QPoint *)> coord_to_screen_fn,
+                  std::array<bool, 4> *out_rendered_layers) {
+  if (out_rendered_layers) {
+    out_rendered_layers->fill(false);
+  }
+
   std::vector<const DjiNfzZone *> sorted_zones;
   sorted_zones.reserve(zones.size());
   for (const auto &zone : zones) {
@@ -33,9 +39,21 @@ void dji_nfz_draw(QPainter &p, const QRect &panel,
     if (dji_nfz_looks_like_outer_frame(*nfz, panel, coord_to_screen_fn)) {
       continue;
     }
+    const int layer_idx = nfz_zone_layer_index(*nfz);
+    if (out_rendered_layers && layer_idx >= 0 && layer_idx < 4) {
+      (*out_rendered_layers)[layer_idx] = true;
+    }
+
     QColor stroke;
     QColor fill;
-    dji_nfz_layer_colors(nfz_zone_layer_index(*nfz), &stroke, &fill);
+    dji_nfz_layer_colors(layer_idx, &stroke, &fill);
+    const QColor dji_color(nfz->color_hex);
+    if (dji_color.isValid()) {
+      stroke = dji_color;
+      stroke.setAlpha(235);
+      fill = dji_color;
+      fill.setAlpha(96);
+    }
     p.setPen(QPen(stroke, 2, Qt::SolidLine));
     p.setBrush(QBrush(fill));
 

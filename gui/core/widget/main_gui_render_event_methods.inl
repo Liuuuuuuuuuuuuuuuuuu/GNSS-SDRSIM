@@ -995,6 +995,10 @@ void MapWidget::paintEvent(QPaintEvent *event) {
       in.spec_snap = spec_snap_;
       in.waterfall_image = wf_.image;
       in.language = ui_language_;
+      in.spectrum_trace_color = wave_spectrum_color_;
+      in.time_q_trace_color = wave_time_q_color_;
+      in.time_i_trace_color = wave_time_i_color_;
+      in.constellation_point_color = wave_constellation_color_;
       // Radar replacement is active only while Crossbow runtime is active.
       const bool is_running_crossbow =
           (in.ctrl.interference_selection == 2) && in.ctrl.running_ui;

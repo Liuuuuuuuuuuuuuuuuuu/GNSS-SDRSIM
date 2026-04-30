@@ -96,12 +96,12 @@ if have_cmd lsusb; then
 fi
 
 section "Process and FD Hygiene"
-BDS_PROCS=$(ps -eo pid,stat,cmd | grep -E 'bds-sim( |$)|bds-sim-fat( |$)|bds-sim-pascal( |$)|bds-sim-turing( |$)|bds-sim-ampere( |$)' | grep -v grep || true)
+BDS_PROCS=$(ps -eo pid,stat,cmd | grep -E 'gnss-sim( |$)|gnss-sim-fat( |$)|gnss-sim-pascal( |$)|gnss-sim-turing( |$)|gnss-sim-ampere( |$)|gnss-sim-ada( |$)|gnss-sim-blackwell( |$)|gnss-sim-modern( |$)' | grep -v grep || true)
 if [[ -n "$BDS_PROCS" ]]; then
-  warn "Found running bds-sim processes:"
+  warn "Found running gnss-sim processes:"
   echo "$BDS_PROCS"
 else
-  pass "No bds-sim process is currently running"
+  pass "No gnss-sim process is currently running"
 fi
 
 USB_HOLDERS=$(for p in /proc/[0-9]*; do

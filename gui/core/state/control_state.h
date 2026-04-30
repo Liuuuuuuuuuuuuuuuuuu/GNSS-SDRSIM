@@ -41,6 +41,8 @@ struct GuiControlState {
     double panel_expand_progress[2];  // 展開進度 [0]=左下, [1]=右下
     char rinex_name_bds[256];
     char rinex_name_gps[256];
+    int n_gps_sats;  /* visible GPS sat count from last compute_sat_points */
+    int n_bds_sats;  /* visible BDS sat count from last compute_sat_points */
 };
 
 #endif

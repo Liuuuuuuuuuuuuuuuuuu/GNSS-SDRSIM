@@ -32,7 +32,7 @@ if [ -f "/tmp/bds_sim_obs.json" ]; then
     echo -e "${GREEN}✓${NC} /tmp/bds_sim_obs.json exists"
     cat /tmp/bds_sim_obs.json
 else
-    echo -e "${YELLOW}⚠${NC} /tmp/bds_sim_obs.json NOT found (will be created by bds-sim)"
+    echo -e "${YELLOW}⚠${NC} /tmp/bds_sim_obs.json NOT found (will be created by gnss-sim)"
 fi
 
 # Check 3: Network interface for WiFi
@@ -116,13 +116,13 @@ fi
 
 # Check 9: Run test (if application available)
 echo ""
-echo "🚀 Quick Runtime Test (requires ./bds-sim available)"
+echo "🚀 Quick Runtime Test (requires ./gnss-sim available)"
 echo "---"
-if [ -x "./bds-sim" ]; then
-    echo -e "${YELLOW}⚠${NC} To test: run './bds-sim' and check stderr output"
+if [ -x "./gnss-sim" ]; then
+    echo -e "${YELLOW}⚠${NC} To test: run './gnss-sim' and check stderr output"
     echo "   Expected: [wifi-rid-bridge] and [ble-rid-bridge] messages"
 else
-    echo -e "${YELLOW}⚠${NC} ./bds-sim not found in current directory"
+    echo -e "${YELLOW}⚠${NC} ./gnss-sim not found in current directory"
 fi
 
 echo ""

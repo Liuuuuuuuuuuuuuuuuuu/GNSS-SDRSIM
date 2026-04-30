@@ -11,7 +11,7 @@ else
 fi
 BIN_DIR="@BIN_DIR@"
 REBUILD_SCRIPT="@REBUILD_SCRIPT@"
-FAT_BIN="$ROOT_DIR/$BIN_DIR/bds-sim-fat"
+FAT_BIN="$ROOT_DIR/$BIN_DIR/gnss-sim-fat"
 
 RUNTIME_LIB_DIRS=""
 if [ -d "$ROOT_DIR/lib" ]; then
@@ -23,6 +23,16 @@ fi
 if [ -n "$RUNTIME_LIB_DIRS" ]; then
   export LD_LIBRARY_PATH="$RUNTIME_LIB_DIRS${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 fi
+
+launcher_name="$(basename "$0")"
+case "$launcher_name" in
+  gnss-sim*)
+    export GNSS_DEFAULT_SIGNAL_MODE="mixed"
+    ;;
+  *)
+    export GNSS_DEFAULT_SIGNAL_MODE="mixed"
+    ;;
+esac
 
 print_rebuild_hint() {
   if [ -x "$ROOT_DIR/$REBUILD_SCRIPT" ]; then
@@ -70,7 +80,6 @@ auto_detect_three_nics() {
   local int_mon
   int_mon=$(_first_iface "$(ls /sys/class/net/ 2>/dev/null | grep '^wlp' | grep 'mon$' | sort)")
 
-  # ── 4-NIC mode: 2 searchers + external tracker + internal aux ────────────────────
   if [ -n "$ext1" ] && [ -n "$ext2" ] && [ -n "$ext3" ] && [ -n "$int_mon" ]; then
     BDS_WIFI_RID_IFACE_1="$ext1"
     BDS_WIFI_RID_IFACE_2="$ext2"
@@ -231,7 +240,6 @@ auto_fix_ble_hci() {
   fi
   [ "$has_hci" -eq 0 ] && return 0
 
-  # Release adapter ownership from bluetoothd for raw monitor capture.
   case "$BDS_BLE_RID_STOP_BLUETOOTHD" in
     0|false|FALSE|False|no|NO|No) ;;
     *)
@@ -245,7 +253,6 @@ auto_fix_ble_hci() {
       ;;
   esac
 
-  # If rfkill reports bluetooth soft blocked, unblock it before bridge launch.
   if command -v rfkill >/dev/null 2>&1; then
     if rfkill list 2>/dev/null | grep -A2 -E '(^|[[:space:]])hci[0-9]+:|Bluetooth' | grep -qi 'Soft blocked: yes'; then
       if command -v sudo >/dev/null 2>&1; then
@@ -258,7 +265,6 @@ auto_fix_ble_hci() {
     fi
   fi
 
-  # Bring HCI up; some systems leave hci0 DOWN after unblock.
   if command -v hciconfig >/dev/null 2>&1; then
     if hciconfig hci0 2>/dev/null | grep -q 'DOWN'; then
       if command -v sudo >/dev/null 2>&1; then
@@ -291,17 +297,17 @@ if [ -x "$FAT_BIN" ]; then
     print_rebuild_hint
     exit 2
   fi
-  echo "[launcher] Using bds-sim-fat (compute_cap=${gpu_cc:-unknown})" >&2
+  echo "[launcher] Using gnss-sim-fat (compute_cap=${gpu_cc:-unknown})" >&2
   exec "$FAT_BIN" "$@"
 fi
 
-for bin in bds-sim-modern bds-sim-ada bds-sim-ampere bds-sim-turing bds-sim-blackwell bds-sim-pascal; do
+for bin in gnss-sim-modern gnss-sim-ada gnss-sim-ampere gnss-sim-turing gnss-sim-blackwell gnss-sim-pascal; do
   if [ -x "$ROOT_DIR/$BIN_DIR/$bin" ]; then
     echo "[launcher] Using fallback $bin (compute_cap=${gpu_cc:-unknown})" >&2
     exec "$ROOT_DIR/$BIN_DIR/$bin" "$@"
   fi
 done
 
-echo "[launcher] No runnable bds-sim binary found under $ROOT_DIR/$BIN_DIR." >&2
+echo "[launcher] No runnable gnss-sim binary found under $ROOT_DIR/$BIN_DIR." >&2
 print_rebuild_hint
 exit 2

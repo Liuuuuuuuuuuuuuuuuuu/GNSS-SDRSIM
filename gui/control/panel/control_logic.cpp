@@ -28,6 +28,18 @@ static inline double mode_min_fs_hz(uint8_t signal_mode) {
     return 5.2e6;
 }
 
+/* Returns the maximum allowed channel count based on currently visible sats. */
+static inline int ctrl_ch_limit(const GuiControlState *ctrl) {
+    int n = 0;
+    if (ctrl->signal_mode == SIG_MODE_GPS)
+        n = ctrl->n_gps_sats;
+    else if (ctrl->signal_mode == SIG_MODE_BDS)
+        n = ctrl->n_bds_sats;
+    else /* MIXED */
+        n = ctrl->n_gps_sats + ctrl->n_bds_sats;
+    return (n > 0) ? n : 16;
+}
+
 static inline double snap_fs_to_mode_grid_hz(double /*fs_hz*/, uint8_t signal_mode) {
     if (signal_mode == SIG_MODE_GPS) return 2.6e6;
     if (signal_mode == SIG_MODE_MIXED) return 20.8e6;
@@ -236,7 +248,8 @@ bool control_logic_handle_click(int x, int y, int win_width, int win_height, Gui
             }
             if (rect_hit(lo.ch_slider, x, y)) {
                 double t = slider_ratio_hit(lo.ch_slider, x);
-                ctrl->max_ch = clamp_int(1 + (int)llround(t * 15.0), 1, 16);
+                int lim = ctrl_ch_limit(ctrl);
+                ctrl->max_ch = clamp_int(1 + (int)llround(t * (double)(lim - 1)), 1, lim);
                 return true;
             }
 
@@ -317,7 +330,8 @@ bool control_logic_handle_click(int x, int y, int win_width, int win_height, Gui
         } 
         if (rect_hit(lo.ch_slider, x, y)) {
             double t = slider_ratio_hit(lo.ch_slider, x);
-            ctrl->max_ch = clamp_int(1 + (int)llround(t * 15.0), 1, 16);
+            int lim = ctrl_ch_limit(ctrl);
+            ctrl->max_ch = clamp_int(1 + (int)llround(t * (double)(lim - 1)), 1, lim);
             return true;
         }
 
@@ -418,7 +432,7 @@ bool control_logic_handle_value_input(int field_id, const char *input, GuiContro
     }
     case CTRL_SLIDER_PATH_V: ctrl->path_vmax_kmh = clamp_double(std::round(x * 10.0) / 10.0, 3.6, 2000.0); return true;
     case CTRL_SLIDER_PATH_A: ctrl->path_accel_mps2 = clamp_double(std::round(x * 10.0) / 10.0, 0.2, 100.0); return true;
-    case CTRL_SLIDER_CH: ctrl->max_ch = clamp_int((int)llround(x), 1, 16); return true;
+    case CTRL_SLIDER_CH: ctrl->max_ch = clamp_int((int)llround(x), 1, ctrl_ch_limit(ctrl)); return true;
     default: return false;
     }
 }
@@ -511,7 +525,8 @@ bool control_logic_handle_slider_drag(int slider_id, int x, int win_width, int w
         if (std::fabs(ctrl->path_accel_mps2 - a) > 1e-9) { ctrl->path_accel_mps2 = a; changed = true; } break;
     }
     case CTRL_SLIDER_CH: {
-        int ch = 1 + (int)llround(t * 15.0); ch = clamp_int(ch, 1, 16);
+        int lim = ctrl_ch_limit(ctrl);
+        int ch = 1 + (int)llround(t * (double)(lim - 1)); ch = clamp_int(ch, 1, lim);
         if (ctrl->max_ch != ch) { ctrl->max_ch = ch; changed = true; } break;
     }
     default: break;

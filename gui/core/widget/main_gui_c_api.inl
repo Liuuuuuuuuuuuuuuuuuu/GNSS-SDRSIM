@@ -207,6 +207,7 @@ extern "C" void map_gui_set_run_state(int running) {
   if (!running) {
     g_ctrl.crossbow_auto_jam_enabled = false;
     g_tx_active.store(false);
+    g_gui_reset_waterfall_req.fetch_add(1);
   }
 }
 
@@ -299,7 +300,8 @@ extern "C" void map_gui_set_selected_llh_centered(double lat_deg,
   MapWidget *w = g_active_widget;
   if (!w)
     return;
-  w->set_selected_llh_centered_public(lat_deg, lon_deg, h_m);
+  // Force-center behavior is disabled globally to preserve user map drag control.
+  w->set_selected_llh_direct_public(lat_deg, lon_deg, h_m);
 }
 
 extern "C" void map_gui_set_selected_altitude(double h_m) {
@@ -388,11 +390,17 @@ extern "C" int map_gui_consume_crossbow_unlock_request(void) {
 
 extern "C" int map_gui_consume_start_request(void) {
   uint32_t n = g_gui_start_req.exchange(0);
+  if (n > 0) {
+    map_gui_reset_monitor_views();
+  }
   return n > 0 ? 1 : 0;
 }
 
 extern "C" int map_gui_consume_launch_request(void) {
   uint32_t n = g_gui_launch_req.exchange(0);
+  if (n > 0) {
+    map_gui_reset_monitor_views();
+  }
   return n > 0 ? 1 : 0;
 }
 
@@ -416,7 +424,11 @@ extern "C" void map_gui_notify_path_segment_started(void) {
 extern "C" void map_gui_notify_path_segment_finished(void) {
   std::lock_guard<std::mutex> lk(g_path_seg_mtx);
   if (!g_path_segments.empty()) {
-    g_path_segments.erase(g_path_segments.begin());
+    GuiPathSegment &front = g_path_segments.front();
+    front.chunk_done = std::max(0, front.chunk_done + 1);
+    if (front.chunk_done >= std::max(1, front.chunk_total)) {
+      g_path_segments.erase(g_path_segments.begin());
+    }
   }
 }
 
@@ -424,7 +436,12 @@ extern "C" void map_gui_notify_path_segment_undo(void) {
   std::lock_guard<std::mutex> lk(g_path_seg_mtx);
   if (!g_path_segments.empty() &&
       g_path_segments.back().state == PATH_SEG_QUEUED) {
-    g_path_segments.pop_back();
+    GuiPathSegment &back = g_path_segments.back();
+    if (back.chunk_total > 1) {
+      back.chunk_total -= 1;
+    } else {
+      g_path_segments.pop_back();
+    }
   }
 }
 
